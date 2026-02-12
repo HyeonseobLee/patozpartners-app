@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { ConsumerEstimateInboxApi, PartnerEstimatePayload } from '../services/consumerEstimateApi';
 
 export const STATUS_FLOW = ['RECEIVED', 'INSPECTING', 'PARTS_PREPARING', 'REPAIRING', 'COMPLETED'] as const;
 
@@ -27,8 +26,6 @@ export type Estimate = {
   note: string;
   sentAt: string;
   additional?: boolean;
-  consumerConfirmed?: boolean;
-  consumerConfirmedAt?: string;
 };
 
 export type RepairTimeline = {
@@ -43,7 +40,6 @@ export type RepairCase = {
   customerName?: string;
   customerLocation?: string;
   requestNote?: string;
-  aiDiagnosis?: string;
   rating?: number;
   deviceModel: string;
   serialNumber: string;
@@ -68,7 +64,6 @@ type RepairCasesContextType = {
   saveEta: (id: string, expectedTimeText: string, options?: { actualTimeText?: string; checklistReady?: boolean }) => void;
   toggleRepairItem: (id: string, itemId: string) => void;
   sendEstimate: (id: string, amount: number, note: string, options?: { additional?: boolean }) => Promise<void>;
-  confirmEstimateByConsumer: (id: string, estimateId: string) => void;
   findCase: (id?: string) => RepairCase | undefined;
 };
 
@@ -113,7 +108,6 @@ const initialCases: RepairCase[] = [
     customerName: '김민수',
     customerLocation: '강남구 역삼동',
     requestNote: '출퇴근 전 빠른 점검 요청',
-    aiDiagnosis: '브레이크 마모 가능성 높음(신뢰도 87%)',
     deviceModel: 'Road Bike Pro 3',
     serialNumber: 'RBP3-2391-AX',
     intakeNumber: 'IN-2026-0001',
@@ -128,7 +122,6 @@ const initialCases: RepairCase[] = [
     customerName: '박지우',
     customerLocation: '송파구 잠실동',
     requestNote: '배터리 지속시간 저하 및 제동 소음',
-    aiDiagnosis: '배터리 셀 불균형 + 패드 교체 필요 가능성',
     deviceModel: 'Urban E-Bike M2',
     serialNumber: 'UEM2-7710-QP',
     intakeNumber: 'IN-2026-0002',
@@ -140,8 +133,6 @@ const initialCases: RepairCase[] = [
         amount: 180000,
         note: '배터리 셀 밸런싱 + 브레이크 패드 교체',
         sentAt: '2026-02-11T10:20:00.000Z',
-        consumerConfirmed: true,
-        consumerConfirmedAt: '2026-02-11T10:40:00.000Z',
       },
     ],
     selectedEstimateId: 'EST-2026-10021',
@@ -162,7 +153,6 @@ const initialCases: RepairCase[] = [
     customerName: '이지은',
     customerLocation: '마포구 서교동',
     requestNote: '체인 소음 및 제동력 저하',
-    aiDiagnosis: '체인 장력 불균형 + 브레이크 패드 마모',
     deviceModel: 'City Fold Mini',
     serialNumber: 'CFM-3221-KK',
     intakeNumber: 'IN-2026-0003',
@@ -174,8 +164,6 @@ const initialCases: RepairCase[] = [
         amount: 120000,
         note: '브레이크 패드 + 체인 장력 조정',
         sentAt: '2026-02-10T18:00:00.000Z',
-        consumerConfirmed: true,
-        consumerConfirmedAt: '2026-02-10T18:12:00.000Z',
       },
     ],
     selectedEstimateId: 'EST-2026-10031',
@@ -265,54 +253,23 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
   };
 
   const sendEstimate = async (id: string, amount: number, note: string, options?: { additional?: boolean }) => {
-    const repairCase = cases.find((item) => item.id === id);
-    if (!repairCase) {
-      return;
-    }
-
     const estimateId = `EST-${Date.now()}`;
-    const payload: PartnerEstimatePayload = {
-      estimateId,
-      caseId: repairCase.id,
-      intakeNumber: repairCase.intakeNumber,
-      customerName: repairCase.customerName,
-      deviceModel: repairCase.deviceModel,
-      repairItems: repairCase.repairItems,
-      amount,
-      note,
-      additional: options?.additional,
-      sentAt: nowIso(),
-    };
-
-    await ConsumerEstimateInboxApi.pushEstimate(payload);
+    const sentAt = nowIso();
 
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
+        selectedEstimateId: estimateId,
         estimates: [
           {
             id: estimateId,
             amount,
             note,
-            sentAt: payload.sentAt,
+            sentAt,
             additional: options?.additional,
           },
           ...item.estimates,
         ],
-      })),
-    );
-  };
-
-  const confirmEstimateByConsumer = (id: string, estimateId: string) => {
-    setCases((prev) =>
-      updateCase(prev, id, (item) => ({
-        ...item,
-        selectedEstimateId: estimateId,
-        estimates: item.estimates.map((estimate) => ({
-          ...estimate,
-          consumerConfirmed: estimate.id === estimateId,
-          consumerConfirmedAt: estimate.id === estimateId ? nowIso() : estimate.consumerConfirmedAt,
-        })),
       })),
     );
   };
@@ -328,7 +285,6 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       saveEta,
       toggleRepairItem,
       sendEstimate,
-      confirmEstimateByConsumer,
       findCase,
     }),
     [cases],
