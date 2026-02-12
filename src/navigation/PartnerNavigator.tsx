@@ -1,7 +1,7 @@
 import React from 'react';
-import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import Svg, { Path } from 'react-native-svg';
 import { RepairHomeScreen } from '../screens/partners/RepairHomeScreen';
 import { RepairManageScreen } from '../screens/partners/RepairManageScreen';
 import { QueueScreen } from '../screens/partners/QueueScreen';
@@ -35,10 +35,27 @@ const ReportStackScreen = () => (
   </ReportStack.Navigator>
 );
 
-const getTabIcon = (icon: string, color: string, size: number, weight: '700' | '800' | '900' = '800') => (
-  <Text style={{ fontSize: size, lineHeight: size + 2, color, fontWeight: weight, textAlign: 'center', includeFontPadding: false }} accessibilityElementsHidden>
-    {icon}
-  </Text>
+const iconCommon = { strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+
+const HomeIcon = ({ color }: { color: string }) => (
+  <Svg width={24} height={24} viewBox="0 0 24 24">
+    <Path d="M3 10.8L12 3l9 7.8" stroke={color} fill="none" {...iconCommon} />
+    <Path d="M6 10.2V20h12v-9.8" stroke={color} fill="none" {...iconCommon} />
+  </Svg>
+);
+
+const ListIcon = ({ color }: { color: string }) => (
+  <Svg width={24} height={24} viewBox="0 0 24 24">
+    <Path d="M7 6h12M7 12h12M7 18h12" stroke={color} fill="none" {...iconCommon} />
+    <Path d="M4 6h.01M4 12h.01M4 18h.01" stroke={color} fill="none" {...iconCommon} />
+  </Svg>
+);
+
+const BarChartIcon = ({ color }: { color: string }) => (
+  <Svg width={24} height={24} viewBox="0 0 24 24">
+    <Path d="M4 20h16" stroke={color} fill="none" {...iconCommon} />
+    <Path d="M7 20v-7M12 20V8M17 20v-11" stroke={color} fill="none" {...iconCommon} />
+  </Svg>
 );
 
 const PartnerNavigator = () => {
@@ -54,9 +71,9 @@ const PartnerNavigator = () => {
           tabBarIconStyle: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
         }}
       >
-        <Tab.Screen name="NewRequest" component={NewRequestStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('⌂', color, 30, '800') }} />
-        <Tab.Screen name="RepairManage" component={RepairStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('☰', color, 30, '800') }} />
-        <Tab.Screen name="RepairReport" component={ReportStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('◉', color, 30, '900') }} />
+        <Tab.Screen name="NewRequest" component={NewRequestStackScreen} options={{ tabBarIcon: ({ color }) => <HomeIcon color={color} /> }} />
+        <Tab.Screen name="RepairManage" component={RepairStackScreen} options={{ tabBarIcon: ({ color }) => <ListIcon color={color} /> }} />
+        <Tab.Screen name="RepairReport" component={ReportStackScreen} options={{ tabBarIcon: ({ color }) => <BarChartIcon color={color} /> }} />
       </Tab.Navigator>
     </RepairCasesProvider>
   );
