@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, G } from 'react-native-svg';
+import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 import { STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { colors, radius, spacing } from '../../styles/theme';
 
@@ -29,52 +29,60 @@ const PieChart = ({
 }: {
   data: Array<{ label: string; value: number; color: string; subtitle: string }>;
 }) => {
-  const radiusSize = 78;
-  const strokeWidth = 42;
-  const circumference = 2 * Math.PI * radiusSize;
+  const radiusSize = 84;
+  const center = 110;
+  const labelRadius = radiusSize * 0.62;
   const total = data.reduce((sum, item) => sum + item.value, 0) || 1;
-  let accumulatedRatio = 0;
+  let accumulatedAngle = -90;
+
+  const buildArcPath = (startAngle: number, endAngle: number) => {
+    const startRad = (Math.PI / 180) * startAngle;
+    const endRad = (Math.PI / 180) * endAngle;
+    const startX = center + radiusSize * Math.cos(startRad);
+    const startY = center + radiusSize * Math.sin(startRad);
+    const endX = center + radiusSize * Math.cos(endRad);
+    const endY = center + radiusSize * Math.sin(endRad);
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+    return `M ${center} ${center} L ${startX} ${startY} A ${radiusSize} ${radiusSize} 0 ${largeArcFlag} 1 ${endX} ${endY} Z`;
+  };
 
   return (
     <View style={styles.pieBlock}>
       <Svg width={220} height={220}>
-        <G x={110} y={110}>
-          {data.map((item) => {
+        <G>
+          {data.map((item, idx) => {
             const ratio = item.value / total;
-            const dash = circumference * ratio;
-            const gap = circumference - dash;
-            const offset = -circumference * accumulatedRatio;
-            accumulatedRatio += ratio;
+            const sweepAngle = ratio * 360;
+            const startAngle = accumulatedAngle;
+            const endAngle = accumulatedAngle + sweepAngle;
+            const midAngle = startAngle + sweepAngle / 2;
+            const labelX = center + labelRadius * Math.cos((Math.PI / 180) * midAngle);
+            const labelY = center + labelRadius * Math.sin((Math.PI / 180) * midAngle);
+            accumulatedAngle = endAngle;
+
+            if (idx === 0 && ratio >= 0.999) {
+              return (
+                <G key={item.label}>
+                  <Circle cx={center} cy={center} r={radiusSize} fill={item.color} />
+                  <SvgText x={center} y={center + 4} textAnchor="middle" style={styles.percentTextSvg}>
+                    100%
+                  </SvgText>
+                </G>
+              );
+            }
 
             return (
-              <Circle
-                key={item.label}
-                cx={0}
-                cy={0}
-                r={radiusSize}
-                stroke={item.color}
-                strokeWidth={strokeWidth}
-                strokeDasharray={`${dash} ${gap}`}
-                strokeDashoffset={offset}
-                fill="transparent"
-                rotation={-90}
-              />
+              <G key={item.label}>
+                <Path d={buildArcPath(startAngle, endAngle)} fill={item.color} stroke={colors.white} strokeWidth={1.5} />
+                <SvgText x={labelX} y={labelY + 4} textAnchor="middle" style={styles.percentTextSvg}>
+                  {Math.max(1, Math.round(ratio * 100))}%
+                </SvgText>
+              </G>
             );
           })}
         </G>
       </Svg>
-
-      <View style={styles.percentOverlay} pointerEvents="none">
-        {data.map((item, idx) => {
-          const ratio = item.value / total;
-          const percent = Math.max(1, Math.round(ratio * 100));
-          return (
-            <Text key={`${item.label}-${idx}`} style={[styles.percentText, { color: item.color }]}>
-              {item.label} {percent}%
-            </Text>
-          );
-        })}
-      </View>
 
       <View style={styles.legendWrap}>
         {data.map((item) => (
@@ -129,16 +137,38 @@ export const ReportScreen = () => {
     const totalPartRepairs = partStats.reduce((sum, item) => sum + item.count, 0);
     const normalizedPartStats = partStats.map((item) => ({ ...item, count: totalPartRepairs === 0 ? 1 : item.count || 1 }));
 
-    const productCounter = new Map<string, number>();
-    rangeCases.forEach((repairCase) => {
-      productCounter.set(repairCase.deviceModel, (productCounter.get(repairCase.deviceModel) ?? 0) + 1);
-    });
-    const productStats = [...productCounter.entries()]
-      .map(([label, count], idx) => ({ label, count, color: colorPalette[idx % colorPalette.length] }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-    const totalProducts = productStats.reduce((sum, item) => sum + item.count, 0) || 1;
+    const productCountMap = new Map<string, number>();
+    const productFinishedCountMap = new Map<string, number>();
+    const productRevenueMap = new Map<string, number>();
 
+    rangeCases.forEach((repairCase) => {
+      productCountMap.set(repairCase.deviceModel, (productCountMap.get(repairCase.deviceModel) ?? 0) + 1);
+    });
+
+    finished.forEach((repairCase) => {
+      const selectedEstimate = repairCase.estimates.find((estimate) => estimate.id === repairCase.selectedEstimateId) ?? repairCase.estimates[0];
+      const amount = selectedEstimate?.amount ?? 0;
+      productFinishedCountMap.set(repairCase.deviceModel, (productFinishedCountMap.get(repairCase.deviceModel) ?? 0) + 1);
+      productRevenueMap.set(repairCase.deviceModel, (productRevenueMap.get(repairCase.deviceModel) ?? 0) + amount);
+    });
+
+    const averageRevenuePerComplete = finished.length > 0 ? revenue / finished.length : 0;
+    const productStats = [...productCountMap.entries()]
+      .map(([label, count], idx) => {
+        const finishedCount = productFinishedCountMap.get(label) ?? 0;
+        const directRevenue = productRevenueMap.get(label) ?? 0;
+        const modeledRevenue = directRevenue > 0 ? directRevenue : Math.round(count * averageRevenuePerComplete * 0.45);
+        const valueScore = Math.max(1, count + finishedCount * 2);
+
+        return {
+          label,
+          value: valueScore,
+          revenue: modeledRevenue,
+          color: colorPalette[idx % colorPalette.length],
+        };
+      })
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
     const stageDurationMap = new Map<string, { totalMs: number; count: number }>();
     rangeCases.forEach((repairCase) => {
       const ordered = [...repairCase.timeline].sort((a, b) => +new Date(a.updatedAt) - +new Date(b.updatedAt));
@@ -165,7 +195,6 @@ export const ReportScreen = () => {
       totalReceived: rangeCases.length,
       partStats: normalizedPartStats,
       productStats,
-      totalProducts,
       stageDurations,
       maxStageHour,
     };
@@ -208,9 +237,9 @@ export const ReportScreen = () => {
         <PieChart
           data={metrics.productStats.map((item) => ({
             label: item.label,
-            value: item.count,
+            value: item.value,
             color: item.color,
-            subtitle: `${Math.round((item.count / metrics.totalProducts) * 100)}%`,
+            subtitle: `₩${Math.round(item.revenue).toLocaleString()}`,
           }))}
         />
       </View>
@@ -246,8 +275,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, color: colors.textPrimary, fontWeight: '700' },
   metricLine: { color: colors.textSecondary, fontSize: 13 },
   pieBlock: { alignItems: 'center', gap: spacing.sm },
-  percentOverlay: { position: 'absolute', top: 58, alignItems: 'center', gap: 2 },
-  percentText: { fontSize: 12, fontWeight: '800', textShadowColor: '#FFFFFF', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  percentTextSvg: { fontSize: 12, fontWeight: '800', fill: colors.white },
   legendWrap: { width: '100%', gap: spacing.xxs },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   legendDot: { width: 10, height: 10, borderRadius: radius.full },
