@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { MANUAL_STATUS_START_INDEX, STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
-import { RepairStatus, STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { colors, radius, spacing } from '../../styles/theme';
 import { StatusBadge } from '../../components/partners/StatusBadge';
 import { StatusStepBar } from '../../components/partners/StatusStepBar';
@@ -30,7 +30,7 @@ const timeSlots = Array.from({ length: 48 }, (_, idx) => {
 
 export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const { caseId } = route.params;
-  const { findCase, saveCompletionDueAt, toggleRepairItem, setStatus, sendEstimate, addRepairItem } = useRepairCases();
+  const { findCase, saveCompletionDueAt, toggleRepairItem, goToNextStatus, canManuallyMoveToNextStatus, getNextStatus, sendEstimate, addRepairItem, acceptEstimate } = useRepairCases();
   const item = findCase(caseId);
 
   const [estimateAmount, setEstimateAmount] = useState('');
@@ -52,6 +52,13 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
     );
   }
 
+  const statusIdx = STATUS_FLOW.indexOf(item.status);
+  const nextStatus = getNextStatus(item);
+  const canManuallyMove = canManuallyMoveToNextStatus(item);
+  const canShowDueDate = statusIdx >= MANUAL_STATUS_START_INDEX;
+  const canShowRepairItems = statusIdx >= MANUAL_STATUS_START_INDEX;
+  const canShowEstimateComposer = statusIdx < STATUS_FLOW.indexOf('ESTIMATE_ACCEPTED');
+
   const onSaveDueDate = () => {
     if (!dueDate || !dueTime) return;
     saveCompletionDueAt(item.id, `${dueDate}T${dueTime}:00.000Z`);
@@ -65,9 +72,12 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
     setEstimateNote('');
   };
 
-  const onSelectStatus = (status: RepairStatus) => {
-    if (status === item.status) return;
-    setStatus(item.id, status);
+  const onManualNextStatus = () => {
+    if (!nextStatus) return;
+    Alert.alert('상태 변경', `상태를 ${STATUS_LABEL[nextStatus]}로 변경하시겠습니까?`, [
+      { text: '취소', style: 'cancel' },
+      { text: '변경', onPress: () => goToNextStatus(item.id) },
+    ]);
   };
 
   const onAddRepairItem = () => {
@@ -76,12 +86,10 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
     setNewItemNote('');
   };
 
-  const canShowRepairItems = item.status === 'ESTIMATE_ACCEPTED';
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.card}>
-        <Text style={styles.title}>{item.deviceModel}</Text>
+        <Text style={styles.modelTitle}>{item.deviceModel}</Text>
         <Text style={styles.meta}>시리얼: {item.serialNumber}</Text>
         <Text style={styles.meta}>접수번호: {item.intakeNumber}</Text>
         <Text style={styles.meta}>고객명: {item.customerName ?? '미입력'}</Text>
@@ -90,7 +98,7 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>전송 견적 리스트</Text>
+        <Text style={styles.sectionTitle}>전송된 견적 리스트</Text>
         {item.estimates.length === 0 && <Text style={styles.meta}>전송된 견적이 없습니다.</Text>}
         {item.estimates.map((estimate) => {
           const selected = estimate.id === item.selectedEstimateId;
@@ -99,86 +107,97 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
               <Text style={styles.itemTitle}>{estimate.amount.toLocaleString()}원</Text>
               <Text style={styles.itemMeta}>{estimate.note}</Text>
               <Text style={styles.itemMeta}>전송 시각: {new Date(estimate.sentAt).toLocaleString()}</Text>
+              {item.status === 'ESTIMATE_PENDING' && (
+                <Pressable style={styles.quoteAcceptButton} onPress={() => acceptEstimate(item.id, estimate.id)}>
+                  <Text style={styles.quoteAcceptButtonText}>소비자 수락 처리</Text>
+                </Pressable>
+              )}
             </View>
           );
         })}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>진행 상태 관리</Text>
-        <StatusStepBar status={item.status} />
-        <View style={styles.statusWrap}>
-          {STATUS_FLOW.map((status) => {
-            const selected = status === item.status;
-            return (
-              <Pressable key={status} style={[styles.statusButton, selected && styles.statusButtonActive]} onPress={() => onSelectStatus(status)}>
-                <Text style={[styles.statusButtonText, selected && styles.statusButtonTextActive]}>{STATUS_LABEL[status]}</Text>
-              </Pressable>
-            );
-          })}
+      {canShowEstimateComposer && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>견적 전송</Text>
+          <TextInput value={estimateAmount} onChangeText={setEstimateAmount} style={styles.input} placeholder="견적 금액" keyboardType="numeric" />
+          <TextInput value={estimateNote} onChangeText={setEstimateNote} style={styles.input} placeholder="견적 메모" />
+          <Pressable style={styles.primaryButton} onPress={onSendEstimate}>
+            <Text style={styles.primaryButtonText}>견적 전송</Text>
+          </Pressable>
         </View>
-      </View>
+      )}
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>완료 예정 일시</Text>
-        <Pressable style={styles.selectorButton} onPress={() => setShowCalendar((prev) => !prev)}>
-          <Text style={styles.selectorText}>{dueDate || '날짜 선택'}</Text>
-          <Text style={styles.selectorIcon}>{showCalendar ? '▲' : '📅'}</Text>
-        </Pressable>
-
-        {showCalendar && (
-          <View style={styles.pickerMenu}>
-            {upcomingDates.map((date) => (
-              <Pressable
-                key={date}
-                style={[styles.pickerOption, dueDate === date && styles.pickerOptionActive]}
-                onPress={() => {
-                  setDueDate(date);
-                  setShowCalendar(false);
-                }}
-              >
-                <Text style={styles.pickerOptionText}>{date}</Text>
-              </Pressable>
-            ))}
-          </View>
+        <Text style={styles.sectionTitle}>진행 상태</Text>
+        <StatusStepBar status={item.status} />
+        {canManuallyMove && nextStatus ? (
+          <Pressable style={styles.primaryButton} onPress={onManualNextStatus}>
+            <Text style={styles.primaryButtonText}>다음 단계로 변경 ({STATUS_LABEL[nextStatus]})</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.meta}>신규 요청~견적 수락 구간은 견적 전송/소비자 수락으로 자동 변경됩니다.</Text>
         )}
-
-        <Pressable style={styles.selectorButton} onPress={() => setShowTimePicker((prev) => !prev)}>
-          <Text style={styles.selectorText}>{dueTime}</Text>
-          <Text style={styles.selectorIcon}>{showTimePicker ? '▲' : '🕒'}</Text>
-        </Pressable>
-
-        {showTimePicker && (
-          <View style={styles.pickerMenu}>
-            {timeSlots.map((slot) => (
-              <Pressable
-                key={slot}
-                style={[styles.pickerOption, dueTime === slot && styles.pickerOptionActive]}
-                onPress={() => {
-                  setDueTime(slot);
-                  setShowTimePicker(false);
-                }}
-              >
-                <Text style={styles.pickerOptionText}>{slot}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
-        <Pressable style={styles.primaryButton} onPress={onSaveDueDate}>
-          <Text style={styles.primaryButtonText}>완료 예정 일시 저장</Text>
-        </Pressable>
       </View>
+
+      {canShowDueDate && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>완료 예정 일시</Text>
+          <View style={styles.layerWrapHigh}>
+            <Pressable style={styles.selectorButton} onPress={() => setShowCalendar((prev) => !prev)}>
+              <Text style={styles.selectorText}>{dueDate || '날짜 선택'}</Text>
+              <Text style={styles.selectorIcon}>{showCalendar ? '▲' : '📅'}</Text>
+            </Pressable>
+            {showCalendar && (
+              <ScrollView style={styles.pickerMenu} nestedScrollEnabled>
+                {upcomingDates.map((date) => (
+                  <Pressable
+                    key={date}
+                    style={[styles.pickerOption, dueDate === date && styles.pickerOptionActive]}
+                    onPress={() => {
+                      setDueDate(date);
+                      setShowCalendar(false);
+                    }}
+                  >
+                    <Text style={styles.pickerOptionText}>{date}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+
+          <View style={styles.layerWrapLow}>
+            <Pressable style={styles.selectorButton} onPress={() => setShowTimePicker((prev) => !prev)}>
+              <Text style={styles.selectorText}>{dueTime}</Text>
+              <Text style={styles.selectorIcon}>{showTimePicker ? '▲' : '🕒'}</Text>
+            </Pressable>
+            {showTimePicker && (
+              <ScrollView style={styles.pickerMenu} nestedScrollEnabled>
+                {timeSlots.map((slot) => (
+                  <Pressable
+                    key={slot}
+                    style={[styles.pickerOption, dueTime === slot && styles.pickerOptionActive]}
+                    onPress={() => {
+                      setDueTime(slot);
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <Text style={styles.pickerOptionText}>{slot}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+
+          <Pressable style={styles.primaryButton} onPress={onSaveDueDate}>
+            <Text style={styles.primaryButtonText}>완료 예정 일시 저장</Text>
+          </Pressable>
+        </View>
+      )}
 
       {canShowRepairItems && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>수리 항목</Text>
-          <TextInput value={newItemTitle} onChangeText={setNewItemTitle} style={styles.input} placeholder="수리 항목 이름" />
-          <TextInput value={newItemNote} onChangeText={setNewItemNote} style={styles.input} placeholder="메모 (선택)" />
-          <Pressable style={styles.secondaryButton} onPress={onAddRepairItem}>
-            <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
-          </Pressable>
-
           {item.repairItems.map((repairItem) => (
             <Pressable key={repairItem.id} style={[styles.itemRow, repairItem.done && styles.itemRowDone]} onPress={() => toggleRepairItem(item.id, repairItem.id)}>
               <View style={{ flex: 1 }}>
@@ -189,17 +208,14 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
               <Text style={[styles.itemStateText, repairItem.done && styles.itemStateTextDone]}>{repairItem.done ? '완료 ✓' : '미완료'}</Text>
             </Pressable>
           ))}
+
+          <TextInput value={newItemTitle} onChangeText={setNewItemTitle} style={styles.input} placeholder="수리 항목 이름" />
+          <TextInput value={newItemNote} onChangeText={setNewItemNote} style={styles.input} placeholder="메모 (선택)" />
+          <Pressable style={styles.secondaryButton} onPress={onAddRepairItem}>
+            <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
+          </Pressable>
         </View>
       )}
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>견적 전송</Text>
-        <TextInput value={estimateAmount} onChangeText={setEstimateAmount} style={styles.input} placeholder="견적 금액" keyboardType="numeric" />
-        <TextInput value={estimateNote} onChangeText={setEstimateNote} style={styles.input} placeholder="견적 메모" />
-        <Pressable style={styles.primaryButton} onPress={onSendEstimate}>
-          <Text style={styles.primaryButtonText}>견적 전송</Text>
-        </Pressable>
-      </View>
     </ScrollView>
   );
 };
@@ -208,7 +224,7 @@ export const RepairManageScreen = RepairStatusUpdateScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
+  content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl + spacing.md },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   card: {
     backgroundColor: colors.white,
@@ -217,40 +233,36 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     padding: spacing.md,
     gap: spacing.sm,
+    overflow: 'visible',
   },
-  title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
+  modelTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
   meta: { fontSize: 12, color: colors.textSecondary },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  statusWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  statusButton: {
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.white,
-  },
-  statusButtonActive: { backgroundColor: colors.brand, borderColor: colors.brand },
-  statusButtonText: { color: colors.textSecondary, fontWeight: '600', fontSize: 12 },
-  statusButtonTextActive: { color: colors.white },
   selectorButton: {
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: radius.md,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
+    minHeight: 46,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.white,
   },
   selectorText: { color: colors.textPrimary, fontWeight: '600' },
   selectorIcon: { color: colors.textSecondary },
+  layerWrapHigh: { zIndex: 40, gap: spacing.xs },
+  layerWrapLow: { zIndex: 30, gap: spacing.xs },
   pickerMenu: {
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: radius.md,
-    maxHeight: 180,
+    maxHeight: 200,
+    backgroundColor: colors.white,
+    paddingVertical: spacing.xxs,
   },
-  pickerOption: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  pickerOption: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, minHeight: 42, justifyContent: 'center' },
   pickerOptionActive: { backgroundColor: colors.brandSoft },
   pickerOptionText: { color: colors.textPrimary },
   input: {
@@ -260,6 +272,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    minHeight: 46,
   },
   itemRow: {
     flexDirection: 'row',
@@ -286,12 +299,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     alignItems: 'center',
     backgroundColor: colors.brand,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   secondaryButton: {
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     alignItems: 'center',
     backgroundColor: colors.royalBlueSoft,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   secondaryButtonText: { color: colors.royalBlue, fontWeight: '700' },
   primaryButtonText: { color: colors.white, fontWeight: '700' },
@@ -303,4 +320,13 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
   },
   quoteCardSelected: { borderColor: colors.royalBlue, backgroundColor: colors.royalBlueSoft },
+  quoteAcceptButton: {
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.royalBlue,
+    borderRadius: radius.md,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+  },
+  quoteAcceptButtonText: { color: colors.royalBlue, fontWeight: '700', fontSize: 12 },
 });

@@ -21,8 +21,6 @@ export const RepairHomeScreen = ({ navigation }: Props) => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>수리 관리</Text>
-
       <View style={styles.filterWrap}>
         <Text style={styles.filterLabel}>상태 필터</Text>
         <Pressable style={styles.dropdownButton} onPress={() => setDropdownOpen((prev) => !prev)}>
@@ -61,7 +59,7 @@ export const RepairHomeScreen = ({ navigation }: Props) => {
         return (
           <Pressable
             key={item.id}
-            style={[styles.card, isPriority && styles.priorityCard, item.status === 'NEW_REQUEST' && styles.newRequestCard]}
+            style={[styles.card, isPriority && styles.priorityCard, item.status === 'NEW_REQUEST' && styles.newRequestCard, item.status === 'ESTIMATE_ACCEPTED' && styles.estimateAcceptedCard]}
             onPress={() => navigation.push('RepairManageDetail', { caseId: item.id })}
           >
             <View style={{ flex: 1, gap: spacing.xxs }}>
@@ -84,12 +82,15 @@ const statusTone: Record<RepairStatus, { color: string }> = {
   NEW_REQUEST: { color: '#D97706' },
   ESTIMATE_PENDING: { color: '#2563EB' },
   ESTIMATE_ACCEPTED: { color: '#059669' },
+  INTAKE_COMPLETED: { color: '#7C3AED' },
+  IN_REPAIR: { color: '#0F766E' },
+  REPAIR_COMPLETED: { color: '#1D4ED8' },
+  RECEIVED_COMPLETED: { color: '#166534' },
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
-  title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary },
   filterWrap: { gap: spacing.xs, zIndex: 10 },
   filterLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
   dropdownButton: {
@@ -132,6 +133,11 @@ const styles = StyleSheet.create({
   },
   newRequestCard: {
     backgroundColor: '#FFFBEB',
+  },
+  estimateAcceptedCard: {
+    borderColor: '#1D4ED8',
+    borderWidth: 3,
+    backgroundColor: '#EFF6FF',
   },
   model: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   meta: { color: colors.textSecondary, fontSize: 12 },

@@ -11,15 +11,12 @@ export const QueueScreen = ({ navigation }: Props) => {
   const { cases } = useRepairCases();
 
   const sortedCases = useMemo(
-    () => [...cases].sort((a, b) => +new Date(b.intakeAt) - +new Date(a.intakeAt)),
+    () => [...cases].filter((item) => item.status === 'NEW_REQUEST').sort((a, b) => +new Date(b.intakeAt) - +new Date(a.intakeAt)),
     [cases],
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>신규 요청</Text>
-      <Text style={styles.subtitle}>접수된 기기를 카드 형태로 확인하고 상세 화면으로 이동하세요.</Text>
-
       <ScrollView contentContainerStyle={styles.listContent}>
         {sortedCases.map((item) => (
           <Pressable key={item.id} style={styles.card} onPress={() => navigation.push('RepairManageDetail', { caseId: item.id })}>
@@ -35,6 +32,7 @@ export const QueueScreen = ({ navigation }: Props) => {
             </View>
           </Pressable>
         ))}
+        {sortedCases.length === 0 && <Text style={styles.emptyText}>신규 요청 상태의 기기가 없습니다.</Text>}
       </ScrollView>
     </View>
   );
@@ -45,17 +43,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     padding: spacing.md,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  subtitle: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-    color: colors.textSecondary,
-    fontSize: 13,
   },
   listContent: {
     gap: spacing.sm,
@@ -99,4 +86,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
   },
+  emptyText: { textAlign: 'center', color: colors.textSecondary, marginTop: spacing.md },
 });

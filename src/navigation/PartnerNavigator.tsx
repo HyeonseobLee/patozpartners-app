@@ -36,7 +36,7 @@ const ReportStackScreen = () => (
 );
 
 const getTabIcon = (icon: string, color: string) => (
-  <Text style={{ fontSize: 19, color }} accessibilityElementsHidden>
+  <Text style={{ fontSize: 20, color, fontWeight: '700' }} accessibilityElementsHidden>
     {icon}
   </Text>
 );
@@ -53,9 +53,9 @@ const PartnerNavigator = () => {
           tabBarStyle: { borderTopColor: colors.royalBlueSoft },
         }}
       >
-        <Tab.Screen name="NewRequest" component={NewRequestStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('🆕', color) }} />
-        <Tab.Screen name="RepairManage" component={RepairStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('🛠️', color) }} />
-        <Tab.Screen name="RepairReport" component={ReportStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('📊', color) }} />
+        <Tab.Screen name="NewRequest" component={NewRequestStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('⌂', color) }} />
+        <Tab.Screen name="RepairManage" component={RepairStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('☰', color) }} />
+        <Tab.Screen name="RepairReport" component={ReportStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('◔', color) }} />
       </Tab.Navigator>
     </RepairCasesProvider>
   );
