@@ -391,6 +391,7 @@ const initialCases: RepairCase[] = [
 const updateCase = (list: RepairCase[], id: string, updater: (item: RepairCase) => RepairCase): RepairCase[] =>
   list.map((item) => (item.id === id ? updater(item) : item));
 
+const REPAIR_COMPLETED_INDEX = STATUS_FLOW.indexOf('REPAIR_COMPLETED');
 const canMoveToRepairCompleted = (repairCase: RepairCase) => repairCase.repairItems.every((repairItem) => repairItem.done);
 
 export const RepairCasesProvider = ({ children }: { children: React.ReactNode }) => {
@@ -455,18 +456,24 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
 
   const toggleRepairItem = (id: string, itemId: string) => {
     setCases((prev) =>
-      updateCase(prev, id, (item) => ({
-        ...item,
-        repairItems: item.repairItems.map((repairItem) =>
-          repairItem.id === itemId
-            ? {
-                ...repairItem,
-                done: !repairItem.done,
-                completedAt: !repairItem.done ? nowIso() : undefined,
-              }
-            : repairItem,
-        ),
-      })),
+      updateCase(prev, id, (item) => {
+        if (STATUS_FLOW.indexOf(item.status) >= REPAIR_COMPLETED_INDEX) {
+          return item;
+        }
+
+        return {
+          ...item,
+          repairItems: item.repairItems.map((repairItem) =>
+            repairItem.id === itemId
+              ? {
+                  ...repairItem,
+                  done: !repairItem.done,
+                  completedAt: !repairItem.done ? nowIso() : undefined,
+                }
+              : repairItem,
+          ),
+        };
+      }),
     );
   };
 
@@ -477,10 +484,16 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     }
 
     setCases((prev) =>
-      updateCase(prev, id, (item) => ({
-        ...item,
-        repairItems: [...item.repairItems, { id: `ITEM-${Date.now()}`, title, note: payload.note?.trim(), done: false }],
-      })),
+      updateCase(prev, id, (item) => {
+        if (STATUS_FLOW.indexOf(item.status) >= REPAIR_COMPLETED_INDEX) {
+          return item;
+        }
+
+        return {
+          ...item,
+          repairItems: [...item.repairItems, { id: `ITEM-${Date.now()}`, title, note: payload.note?.trim(), done: false }],
+        };
+      }),
     );
   };
 

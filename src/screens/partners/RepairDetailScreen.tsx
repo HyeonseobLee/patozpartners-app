@@ -68,15 +68,21 @@ export const RepairDetailScreen = ({ route }: Props) => {
 
   const onManualNextStatus = () => {
     if (!nextStatus) return;
+
+    const isRepairCompletionTransition = item.status === 'IN_REPAIR' && nextStatus === 'REPAIR_COMPLETED';
+    const hasIncompleteRepairItems = item.repairItems.some((repairItem) => !repairItem.done);
+
+    if (isRepairCompletionTransition && hasIncompleteRepairItems) {
+      Alert.alert('상태 변경 불가', '모든 수리 항목이 완료되어야 수리 완료 상태로 넘어갈 수 있습니다');
+      return;
+    }
+
     Alert.alert('상태 변경', `상태를 ${STATUS_LABEL[nextStatus]}로 변경하시겠습니까?`, [
       { text: '취소', style: 'cancel' },
       {
         text: '변경',
         onPress: () => {
-          const moved = goToNextStatus(item.id);
-          if (!moved && nextStatus === 'REPAIR_COMPLETED') {
-            Alert.alert('상태 변경 불가', '모든 수리 항목이 완료되어야 수리 완료 상태로 넘어갈 수 있습니다');
-          }
+          goToNextStatus(item.id);
         },
       },
     ]);
@@ -228,33 +234,22 @@ export const RepairDetailScreen = ({ route }: Props) => {
             </Pressable>
           ))}
 
-          <View style={[styles.addItemWrap, isRepairCompletedOrLater && styles.addItemWrapDisabled]}>
-            <TextInput
-              value={newItemTitle}
-              onChangeText={setNewItemTitle}
-              style={[styles.input, isRepairCompletedOrLater && styles.disabledInput]}
-              placeholder="수리 항목 이름"
-              editable={!isRepairCompletedOrLater}
-            />
-            <TextInput
-              value={newItemNote}
-              onChangeText={setNewItemNote}
-              style={[styles.input, isRepairCompletedOrLater && styles.disabledInput]}
-              placeholder="메모 (선택)"
-              editable={!isRepairCompletedOrLater}
-            />
-            <Pressable
-              disabled={isRepairCompletedOrLater}
-              style={[styles.secondaryButton, isRepairCompletedOrLater && styles.disabledButton]}
-              onPress={() => {
-                addRepairItem(item.id, { title: newItemTitle, note: newItemNote });
-                setNewItemTitle('');
-                setNewItemNote('');
-              }}
-            >
-              <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
-            </Pressable>
-          </View>
+          {!isRepairCompletedOrLater && (
+            <View style={styles.addItemWrap}>
+              <TextInput value={newItemTitle} onChangeText={setNewItemTitle} style={styles.input} placeholder="수리 항목 이름" />
+              <TextInput value={newItemNote} onChangeText={setNewItemNote} style={styles.input} placeholder="메모 (선택)" />
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => {
+                  addRepairItem(item.id, { title: newItemTitle, note: newItemNote });
+                  setNewItemTitle('');
+                  setNewItemNote('');
+                }}
+              >
+                <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       )}
 
@@ -317,8 +312,6 @@ const styles = StyleSheet.create({
   itemStateTextDone: { color: '#15803D' },
   primaryButton: { borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.brand, minHeight: 44, justifyContent: 'center' },
   secondaryButton: { borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.royalBlueSoft, minHeight: 44, justifyContent: 'center' },
-  disabledButton: { opacity: 0.55 },
-  disabledInput: { backgroundColor: '#F3F4F6', color: colors.textSecondary },
   addItemWrap: {
     marginTop: spacing.xs,
     borderWidth: 1,
@@ -328,10 +321,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF',
     padding: spacing.sm,
     gap: spacing.xs,
-  },
-  addItemWrapDisabled: {
-    borderColor: colors.borderSoft,
-    backgroundColor: '#F8FAFC',
   },
   secondaryButtonText: { color: colors.royalBlue, fontWeight: '700' },
   primaryButtonText: { color: colors.white, fontWeight: '700' },
