@@ -3,39 +3,37 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRepairCases } from '../../context/RepairCasesContext';
 import { colors, radius, spacing } from '../../styles/theme';
 
-type RangeType = '일' | '주' | '월';
-const RANGE_OPTIONS: RangeType[] = ['일', '주', '월'];
+type RangeType = '일간' | '주간' | '월간';
+const RANGE_OPTIONS: RangeType[] = ['일간', '주간', '월간'];
 
 export const ReportScreen = () => {
   const { cases } = useRepairCases();
-  const [range, setRange] = useState<RangeType>('일');
+  const [range, setRange] = useState<RangeType>('일간');
 
   const metrics = useMemo(() => {
-    const completed = cases.filter((item) => item.repairCompletedAt);
-    const avgHours = completed.length
-      ? (
-          completed.reduce((sum, item) => {
-            const start = +new Date(item.intakeAt);
-            const end = +new Date(item.repairCompletedAt || item.intakeAt);
-            return sum + (end - start) / (1000 * 60 * 60);
-          }, 0) / completed.length
-        ).toFixed(1)
-      : '0';
+    const finished = cases.filter((item) => item.status === 'FINISHED');
+    const revenue = finished.reduce((sum, item) => sum + (item.estimate?.amount ?? 0), 0);
+
+    const itemCounter = new Map<string, number>();
+    cases.forEach((repairCase) => {
+      repairCase.repairItems.forEach((repairItem) => {
+        itemCounter.set(repairItem.title, (itemCounter.get(repairItem.title) ?? 0) + 1);
+      });
+    });
+
+    const topItem = [...itemCounter.entries()].sort((a, b) => b[1] - a[1])[0];
+    const ratedCases = cases.filter((item) => item.rating);
+    const avgRating = ratedCases.length
+      ? (ratedCases.reduce((sum, item) => sum + (item.rating ?? 0), 0) / ratedCases.length).toFixed(1)
+      : '0.0';
 
     return {
-      total: cases.length,
-      completed: completed.length,
-      avgHours,
+      totalFinished: finished.length,
+      revenue,
+      topItem: topItem ? `${topItem[0]} (${topItem[1]}건)` : '데이터 없음',
+      avgRating,
     };
   }, [cases, range]);
-
-  const issueBars = [
-    { label: '브레이크 소음', count: 18 },
-    { label: '배터리 성능 저하', count: 13 },
-    { label: '타이어 마모', count: 10 },
-    { label: '구동계 유격', count: 7 },
-  ];
-  const max = Math.max(...issueBars.map((item) => item.count));
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -52,42 +50,25 @@ export const ReportScreen = () => {
         })}
       </View>
 
-      <View style={styles.metricsRow}>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>이번 기간 접수</Text>
-          <Text style={styles.metricValue}>{metrics.total}</Text>
-        </View>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>완료 수리</Text>
-          <Text style={styles.metricValue}>{metrics.completed}</Text>
-        </View>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>평균 처리 시간</Text>
-          <Text style={styles.metricValue}>{metrics.avgHours}h</Text>
-        </View>
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>핵심 지표 ({range})</Text>
+        <Text style={styles.metricLine}>총 수리 완료 건수: {metrics.totalFinished}건</Text>
+        <Text style={styles.metricLine}>누적 매출액: {metrics.revenue.toLocaleString()}원</Text>
+        <Text style={styles.metricLine}>가장 많이 수리된 항목: {metrics.topItem}</Text>
+        <Text style={styles.metricLine}>고객 만족도(별점): {metrics.avgRating} / 5.0</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>상위 고객 증상</Text>
-        {issueBars.map((issue) => (
-          <View key={issue.label} style={styles.barRow}>
-            <Text style={styles.barLabel}>{issue.label}</Text>
-            <View style={styles.barTrack}>
-              <View style={[styles.barFill, { width: `${(issue.count / max) * 100}%` }]} />
+        <Text style={styles.sectionTitle}>최근 완료 건</Text>
+        {cases
+          .filter((item) => item.status === 'FINISHED')
+          .slice(0, 4)
+          .map((item) => (
+            <View key={item.id} style={styles.issueCard}>
+              <Text style={styles.issueTitle}>{item.deviceModel}</Text>
+              <Text style={styles.issueMeta}>{item.customerName ?? '고객 미입력'} · {item.estimate?.amount?.toLocaleString() ?? 0}원</Text>
             </View>
-            <Text style={styles.barCount}>{issue.count}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>최근 이슈</Text>
-        {cases.slice(0, 4).map((item) => (
-          <View style={styles.issueCard} key={item.id}>
-            <Text style={styles.issueTitle}>{item.deviceModel}</Text>
-            <Text style={styles.issueMeta}>{item.customerName ?? '고객 미입력'} · {item.status}</Text>
-          </View>
-        ))}
+          ))}
       </View>
     </ScrollView>
   );
@@ -109,17 +90,6 @@ const styles = StyleSheet.create({
   segmentBtnActive: { backgroundColor: colors.brand },
   segmentText: { color: colors.textSecondary, fontWeight: '600' },
   segmentTextActive: { color: colors.white },
-  metricsRow: { flexDirection: 'row', gap: spacing.xs },
-  metricCard: {
-    flex: 1,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-  },
-  metricLabel: { color: colors.textSecondary, fontSize: 12 },
-  metricValue: { color: colors.textPrimary, fontWeight: '800', fontSize: 18, marginTop: spacing.xs },
   card: {
     backgroundColor: colors.white,
     borderColor: colors.borderSoft,
@@ -129,11 +99,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   sectionTitle: { fontSize: 16, color: colors.textPrimary, fontWeight: '700' },
-  barRow: { gap: spacing.xs },
-  barLabel: { color: colors.textSecondary, fontSize: 12 },
-  barTrack: { height: 10, borderRadius: radius.full, backgroundColor: '#E5E7EB', overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.brand },
-  barCount: { alignSelf: 'flex-end', color: colors.textSecondary, fontSize: 12 },
+  metricLine: { color: colors.textSecondary, fontSize: 14 },
   issueCard: {
     borderWidth: 1,
     borderColor: colors.borderSoft,
