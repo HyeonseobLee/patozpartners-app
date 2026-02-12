@@ -1,4 +1,5 @@
 export const colors = {
+  midnightNavy: '#1A2130',
   royalBlue: '#4169E1',
   royalBlueSoft: '#DCE5FF',
   royalBlueDark: '#2F4EB3',
