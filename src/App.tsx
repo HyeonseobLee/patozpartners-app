@@ -1,6 +1,11 @@
 import React from 'react';
-import { PartnersNavigator } from './navigation/PartnersNavigator';
+import { NavigationContainer } from '@react-navigation/native';
+import MainNavigator from './navigation/PartnerNavigator';
 
 export default function App() {
-  return <PartnersNavigator />;
+  return (
+    <NavigationContainer>
+      <MainNavigator />
+    </NavigationContainer>
+  );
 }
