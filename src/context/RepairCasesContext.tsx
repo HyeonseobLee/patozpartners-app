@@ -391,6 +391,8 @@ const initialCases: RepairCase[] = [
 const updateCase = (list: RepairCase[], id: string, updater: (item: RepairCase) => RepairCase): RepairCase[] =>
   list.map((item) => (item.id === id ? updater(item) : item));
 
+const canMoveToRepairCompleted = (repairCase: RepairCase) => repairCase.repairItems.every((repairItem) => repairItem.done);
+
 export const RepairCasesProvider = ({ children }: { children: React.ReactNode }) => {
   const [cases, setCases] = useState<RepairCase[]>(initialCases);
 
@@ -430,6 +432,9 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
         }
         const nextStatus = getNextStatus(item);
         if (!nextStatus) {
+          return item;
+        }
+        if (nextStatus === 'REPAIR_COMPLETED' && !canMoveToRepairCompleted(item)) {
           return item;
         }
         moved = true;
