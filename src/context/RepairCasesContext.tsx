@@ -10,7 +10,7 @@ export const STATUS_LABEL: Record<RepairStatus, string> = {
   INSPECTING: '점검 중',
   PARTS_PENDING: '부품 준비',
   REPAIRING: '수리 진행 중',
-  FINISHED: '수리 완료/수령 완료',
+  FINISHED: '수령 완료',
 };
 
 export type RepairItem = {
@@ -34,10 +34,20 @@ export type Inspection = {
 };
 
 export type Estimate = {
-  amount?: number;
-  note?: string;
-  sentAt?: string;
+  id: string;
+  amount: number;
+  note: string;
+  sentAt: string;
   additional?: boolean;
+  consumerConfirmed?: boolean;
+  consumerConfirmedAt?: string;
+};
+
+export type RepairTimeline = {
+  status: RepairStatus;
+  statusLabel: string;
+  updatedAt: string;
+  completedRepairItems: string[];
 };
 
 export type RepairCase = {
@@ -53,8 +63,10 @@ export type RepairCase = {
   intakeAt: string;
   status: RepairStatus;
   inspection?: Inspection;
-  estimate?: Estimate;
+  estimates: Estimate[];
+  selectedEstimateId?: string;
   repairItems: RepairItem[];
+  timeline: RepairTimeline[];
   etaText?: string;
   repairCompletedAt?: string;
   pickupCompletedAt?: string;
@@ -62,7 +74,7 @@ export type RepairCase = {
 
 type RepairCasesContextType = {
   cases: RepairCase[];
-  setStatus: (id: string, status: RepairStatus) => void;
+  setStatus: (id: string, status: RepairStatus) => boolean;
   goToNextStatus: (id: string) => void;
   goToPrevStatus: (id: string) => void;
   saveInspection: (id: string, payload: Inspection) => void;
@@ -70,12 +82,50 @@ type RepairCasesContextType = {
   saveEta: (id: string, etaText: string) => void;
   toggleRepairItem: (id: string, itemId: string) => void;
   sendEstimate: (id: string, amount: number, note: string, options?: { additional?: boolean }) => Promise<void>;
+  confirmEstimateByConsumer: (id: string, estimateId: string) => void;
   findCase: (id?: string) => RepairCase | undefined;
 };
 
 const RepairCasesContext = createContext<RepairCasesContextType | null>(null);
 
 const nowIso = () => new Date().toISOString();
+
+const createTimeline = (status: RepairStatus, repairItems: RepairItem[]): RepairTimeline => ({
+  status,
+  statusLabel: STATUS_LABEL[status],
+  updatedAt: nowIso(),
+  completedRepairItems: repairItems.filter((item) => item.done).map((item) => item.title),
+});
+
+const hasConfirmedEstimate = (repairCase: RepairCase) =>
+  repairCase.estimates.some((estimate) => estimate.consumerConfirmed);
+
+const canMoveToStatus = (repairCase: RepairCase, status: RepairStatus) => {
+  if (status === 'PARTS_PENDING' && !hasConfirmedEstimate(repairCase)) {
+    return false;
+  }
+  return true;
+};
+
+const withStatusTransition = (repairCase: RepairCase, status: RepairStatus): RepairCase => {
+  if (!canMoveToStatus(repairCase, status)) {
+    return repairCase;
+  }
+
+  const nextCase: RepairCase = {
+    ...repairCase,
+    status,
+    timeline: [...repairCase.timeline, createTimeline(status, repairCase.repairItems)],
+  };
+
+  if (status === 'FINISHED' && !repairCase.repairCompletedAt) {
+    const completedAt = nowIso();
+    nextCase.repairCompletedAt = completedAt;
+    nextCase.pickupCompletedAt = completedAt;
+  }
+
+  return nextCase;
+};
 
 const initialCases: RepairCase[] = [
   {
@@ -89,7 +139,9 @@ const initialCases: RepairCase[] = [
     intakeNumber: 'IN-2026-0001',
     intakeAt: '2026-02-11T09:10:00.000Z',
     status: 'REGISTERED',
+    estimates: [],
     repairItems: [],
+    timeline: [{ status: 'REGISTERED', statusLabel: STATUS_LABEL.REGISTERED, updatedAt: '2026-02-11T09:10:00.000Z', completedRepairItems: [] }],
   },
   {
     id: 'RC-1002',
@@ -110,7 +162,19 @@ const initialCases: RepairCase[] = [
       other: false,
       memo: '배터리 잔량 저하 이슈 확인 필요',
     },
+    estimates: [
+      {
+        id: 'EST-2026-10021',
+        amount: 98000,
+        note: '배터리 밸런싱 + 브레이크 패드 교체',
+        sentAt: '2026-02-11T11:05:00.000Z',
+      },
+    ],
     repairItems: [],
+    timeline: [
+      { status: 'REGISTERED', statusLabel: STATUS_LABEL.REGISTERED, updatedAt: '2026-02-11T10:25:00.000Z', completedRepairItems: [] },
+      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-11T10:40:00.000Z', completedRepairItems: [] },
+    ],
   },
   {
     id: 'RC-1003',
@@ -124,11 +188,17 @@ const initialCases: RepairCase[] = [
     intakeNumber: 'IN-2026-0003',
     intakeAt: '2026-02-10T16:45:00.000Z',
     status: 'REPAIRING',
-    estimate: {
-      amount: 120000,
-      note: '브레이크 패드 + 체인 장력 조정',
-      sentAt: '2026-02-10T18:00:00.000Z',
-    },
+    estimates: [
+      {
+        id: 'EST-2026-10031',
+        amount: 120000,
+        note: '브레이크 패드 + 체인 장력 조정',
+        sentAt: '2026-02-10T18:00:00.000Z',
+        consumerConfirmed: true,
+        consumerConfirmedAt: '2026-02-10T18:12:00.000Z',
+      },
+    ],
+    selectedEstimateId: 'EST-2026-10031',
     repairItems: [
       {
         id: 'ITEM-1',
@@ -145,6 +215,12 @@ const initialCases: RepairCase[] = [
         done: false,
       },
     ],
+    timeline: [
+      { status: 'REGISTERED', statusLabel: STATUS_LABEL.REGISTERED, updatedAt: '2026-02-10T16:45:00.000Z', completedRepairItems: [] },
+      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-10T17:20:00.000Z', completedRepairItems: [] },
+      { status: 'PARTS_PENDING', statusLabel: STATUS_LABEL.PARTS_PENDING, updatedAt: '2026-02-10T18:15:00.000Z', completedRepairItems: [] },
+      { status: 'REPAIRING', statusLabel: STATUS_LABEL.REPAIRING, updatedAt: '2026-02-10T19:10:00.000Z', completedRepairItems: [] },
+    ],
   },
 ];
 
@@ -155,16 +231,15 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
   const [cases, setCases] = useState<RepairCase[]>(initialCases);
 
   const setStatus = (id: string, status: RepairStatus) => {
+    let updated = false;
     setCases((prev) =>
       updateCase(prev, id, (item) => {
-        const next: RepairCase = { ...item, status };
-        if (status === 'FINISHED' && !item.repairCompletedAt) {
-          next.repairCompletedAt = nowIso();
-          next.pickupCompletedAt = nowIso();
-        }
-        return next;
+        const nextItem = withStatusTransition(item, status);
+        updated = nextItem !== item;
+        return nextItem;
       }),
     );
+    return updated;
   };
 
   const goToNextStatus = (id: string) => {
@@ -174,16 +249,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
         if (currentIdx < 0 || currentIdx >= STATUS_FLOW.length - 1) {
           return item;
         }
-        const nextStatus = STATUS_FLOW[currentIdx + 1];
-        if (nextStatus === 'PARTS_PENDING' && !item.estimate?.sentAt) {
-          return item;
-        }
-        const nextItem: RepairCase = { ...item, status: nextStatus };
-        if (nextStatus === 'FINISHED' && !item.repairCompletedAt) {
-          nextItem.repairCompletedAt = nowIso();
-          nextItem.pickupCompletedAt = nowIso();
-        }
-        return nextItem;
+        return withStatusTransition(item, STATUS_FLOW[currentIdx + 1]);
       }),
     );
   };
@@ -195,7 +261,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
         if (currentIdx <= 0) {
           return item;
         }
-        return { ...item, status: STATUS_FLOW[currentIdx - 1] };
+        return withStatusTransition(item, STATUS_FLOW[currentIdx - 1]);
       }),
     );
   };
@@ -246,7 +312,9 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       return;
     }
 
+    const estimateId = `EST-${Date.now()}`;
     const payload: PartnerEstimatePayload = {
+      estimateId,
       caseId: repairCase.id,
       intakeNumber: repairCase.intakeNumber,
       customerName: repairCase.customerName,
@@ -263,12 +331,30 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
-        estimate: {
-          amount,
-          note,
-          sentAt: payload.sentAt,
-          additional: options?.additional,
-        },
+        estimates: [
+          {
+            id: estimateId,
+            amount,
+            note,
+            sentAt: payload.sentAt,
+            additional: options?.additional,
+          },
+          ...item.estimates,
+        ],
+      })),
+    );
+  };
+
+  const confirmEstimateByConsumer = (id: string, estimateId: string) => {
+    setCases((prev) =>
+      updateCase(prev, id, (item) => ({
+        ...item,
+        selectedEstimateId: estimateId,
+        estimates: item.estimates.map((estimate) => ({
+          ...estimate,
+          consumerConfirmed: estimate.id === estimateId,
+          consumerConfirmedAt: estimate.id === estimateId ? nowIso() : estimate.consumerConfirmedAt,
+        })),
       })),
     );
   };
@@ -286,6 +372,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       saveEta,
       toggleRepairItem,
       sendEstimate,
+      confirmEstimateByConsumer,
       findCase,
     }),
     [cases],
