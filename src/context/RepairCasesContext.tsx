@@ -1,16 +1,17 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
+import { ConsumerEstimateInboxApi, PartnerEstimatePayload } from '../services/consumerEstimateApi';
 
-export const STATUS_FLOW = [
-  '점검대기',
-  '점검중',
-  '견적 전달',
-  '부품 준비',
-  '수리 진행 중',
-  '수리 완료',
-  '수령 완료',
-] as const;
+export const STATUS_FLOW = ['REGISTERED', 'INSPECTING', 'PARTS_PENDING', 'REPAIRING', 'FINISHED'] as const;
 
 export type RepairStatus = (typeof STATUS_FLOW)[number];
+
+export const STATUS_LABEL: Record<RepairStatus, string> = {
+  REGISTERED: '접수 완료',
+  INSPECTING: '점검 중',
+  PARTS_PENDING: '부품 준비',
+  REPAIRING: '수리 진행 중',
+  FINISHED: '수리 완료/수령 완료',
+};
 
 export type RepairItem = {
   id: string;
@@ -36,11 +37,16 @@ export type Estimate = {
   amount?: number;
   note?: string;
   sentAt?: string;
+  additional?: boolean;
 };
 
 export type RepairCase = {
   id: string;
   customerName?: string;
+  customerLocation?: string;
+  requestNote?: string;
+  aiDiagnosis?: string;
+  rating?: number;
   deviceModel: string;
   serialNumber: string;
   intakeNumber: string;
@@ -49,6 +55,7 @@ export type RepairCase = {
   inspection?: Inspection;
   estimate?: Estimate;
   repairItems: RepairItem[];
+  etaText?: string;
   repairCompletedAt?: string;
   pickupCompletedAt?: string;
 };
@@ -60,8 +67,9 @@ type RepairCasesContextType = {
   goToPrevStatus: (id: string) => void;
   saveInspection: (id: string, payload: Inspection) => void;
   addRepairItem: (id: string, item: Omit<RepairItem, 'id'>) => void;
+  saveEta: (id: string, etaText: string) => void;
   toggleRepairItem: (id: string, itemId: string) => void;
-  sendEstimate: (id: string, amount: number, note: string) => void;
+  sendEstimate: (id: string, amount: number, note: string, options?: { additional?: boolean }) => Promise<void>;
   findCase: (id?: string) => RepairCase | undefined;
 };
 
@@ -73,21 +81,27 @@ const initialCases: RepairCase[] = [
   {
     id: 'RC-1001',
     customerName: '김민수',
+    customerLocation: '강남구 역삼동',
+    requestNote: '출퇴근 전 빠른 점검 요청',
+    aiDiagnosis: '브레이크 마모 가능성 높음(신뢰도 87%)',
     deviceModel: 'Road Bike Pro 3',
     serialNumber: 'RBP3-2391-AX',
     intakeNumber: 'IN-2026-0001',
     intakeAt: '2026-02-11T09:10:00.000Z',
-    status: '점검대기',
+    status: 'REGISTERED',
     repairItems: [],
   },
   {
     id: 'RC-1002',
     customerName: '박지우',
+    customerLocation: '송파구 잠실동',
+    requestNote: '배터리 지속시간 저하 및 제동 소음',
+    aiDiagnosis: '배터리 셀 불균형 + 패드 교체 필요 가능성',
     deviceModel: 'Urban E-Bike M2',
     serialNumber: 'UEM2-7710-QP',
     intakeNumber: 'IN-2026-0002',
     intakeAt: '2026-02-11T10:25:00.000Z',
-    status: '점검중',
+    status: 'INSPECTING',
     inspection: {
       brake: true,
       tire: false,
@@ -101,11 +115,20 @@ const initialCases: RepairCase[] = [
   {
     id: 'RC-1003',
     customerName: '이서연',
+    customerLocation: '마포구 상암동',
+    requestNote: '체인 소음 및 뒷바퀴 흔들림',
+    aiDiagnosis: '체인 장력 저하 및 브레이크 패드 마모',
+    rating: 4.7,
     deviceModel: 'City Fold Mini',
     serialNumber: 'CFM-3221-KK',
     intakeNumber: 'IN-2026-0003',
     intakeAt: '2026-02-10T16:45:00.000Z',
-    status: '수리 진행 중',
+    status: 'REPAIRING',
+    estimate: {
+      amount: 120000,
+      note: '브레이크 패드 + 체인 장력 조정',
+      sentAt: '2026-02-10T18:00:00.000Z',
+    },
     repairItems: [
       {
         id: 'ITEM-1',
@@ -135,10 +158,8 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     setCases((prev) =>
       updateCase(prev, id, (item) => {
         const next: RepairCase = { ...item, status };
-        if (status === '수리 완료' && !item.repairCompletedAt) {
+        if (status === 'FINISHED' && !item.repairCompletedAt) {
           next.repairCompletedAt = nowIso();
-        }
-        if (status === '수령 완료' && !item.pickupCompletedAt) {
           next.pickupCompletedAt = nowIso();
         }
         return next;
@@ -154,14 +175,12 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
           return item;
         }
         const nextStatus = STATUS_FLOW[currentIdx + 1];
-        if (nextStatus === '부품 준비' && !item.estimate?.sentAt) {
+        if (nextStatus === 'PARTS_PENDING' && !item.estimate?.sentAt) {
           return item;
         }
         const nextItem: RepairCase = { ...item, status: nextStatus };
-        if (nextStatus === '수리 완료' && !item.repairCompletedAt) {
+        if (nextStatus === 'FINISHED' && !item.repairCompletedAt) {
           nextItem.repairCompletedAt = nowIso();
-        }
-        if (nextStatus === '수령 완료' && !item.pickupCompletedAt) {
           nextItem.pickupCompletedAt = nowIso();
         }
         return nextItem;
@@ -186,7 +205,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       updateCase(prev, id, (item) => ({
         ...item,
         inspection: payload,
-        status: item.status === '점검대기' ? '점검중' : item.status,
+        status: item.status === 'REGISTERED' ? 'INSPECTING' : item.status,
       })),
     );
   };
@@ -198,6 +217,10 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
         repairItems: [...item.repairItems, { ...payload, id: `${id}-I-${Date.now()}` }],
       })),
     );
+  };
+
+  const saveEta = (id: string, etaText: string) => {
+    setCases((prev) => updateCase(prev, id, (item) => ({ ...item, etaText })));
   };
 
   const toggleRepairItem = (id: string, itemId: string) => {
@@ -217,14 +240,34 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     );
   };
 
-  const sendEstimate = (id: string, amount: number, note: string) => {
+  const sendEstimate = async (id: string, amount: number, note: string, options?: { additional?: boolean }) => {
+    const repairCase = cases.find((item) => item.id === id);
+    if (!repairCase) {
+      return;
+    }
+
+    const payload: PartnerEstimatePayload = {
+      caseId: repairCase.id,
+      intakeNumber: repairCase.intakeNumber,
+      customerName: repairCase.customerName,
+      deviceModel: repairCase.deviceModel,
+      repairItems: repairCase.repairItems,
+      amount,
+      note,
+      additional: options?.additional,
+      sentAt: nowIso(),
+    };
+
+    await ConsumerEstimateInboxApi.pushEstimate(payload);
+
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
         estimate: {
           amount,
           note,
-          sentAt: nowIso(),
+          sentAt: payload.sentAt,
+          additional: options?.additional,
         },
       })),
     );
@@ -240,6 +283,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       goToPrevStatus,
       saveInspection,
       addRepairItem,
+      saveEta,
       toggleRepairItem,
       sendEstimate,
       findCase,

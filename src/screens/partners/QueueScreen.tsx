@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useRepairCases } from '../../context/RepairCasesContext';
+import { STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { QueueStackParamList } from '../../navigation/partnersTypes';
 import { colors, radius, spacing } from '../../styles/theme';
 import { StatusBadge } from '../../components/partners/StatusBadge';
 
 type Props = NativeStackScreenProps<QueueStackParamList, 'QueueHome'>;
 
-const FILTERS = ['전체', '점검대기', '수리 진행 중', '수리 완료', '수령 완료'] as const;
+const FILTERS = ['전체', '접수 완료', '점검 중', '부품 준비', '수리 진행 중', '수리 완료/수령 완료'] as const;
 type Filter = (typeof FILTERS)[number];
 
 export const QueueScreen = ({ navigation }: Props) => {
@@ -24,7 +24,7 @@ export const QueueScreen = ({ navigation }: Props) => {
   const filteredCases = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return [...cases]
-      .filter((item) => (filter === '전체' ? true : item.status === filter))
+      .filter((item) => (filter === '전체' ? true : STATUS_LABEL[item.status] === filter))
       .filter((item) => {
         if (!normalized) return true;
         return [item.customerName, item.deviceModel, item.serialNumber, item.intakeNumber]
@@ -34,8 +34,8 @@ export const QueueScreen = ({ navigation }: Props) => {
           .includes(normalized);
       })
       .sort((a, b) => {
-        const aDone = a.status === '수령 완료' ? 1 : 0;
-        const bDone = b.status === '수령 완료' ? 1 : 0;
+        const aDone = a.status === 'FINISHED' ? 1 : 0;
+        const bDone = b.status === 'FINISHED' ? 1 : 0;
         if (aDone !== bDone) return aDone - bDone;
         return +new Date(b.intakeAt) - +new Date(a.intakeAt);
       });
@@ -77,6 +77,9 @@ export const QueueScreen = ({ navigation }: Props) => {
               <Text style={styles.meta}>시리얼: {item.serialNumber}</Text>
               <Text style={styles.meta}>접수번호: {item.intakeNumber}</Text>
               <Text style={styles.meta}>접수시각: {new Date(item.intakeAt).toLocaleString()}</Text>
+              <Text style={styles.meta}>위치: {item.customerLocation ?? '위치 미입력'}</Text>
+              <Text style={styles.meta}>AI 진단: {item.aiDiagnosis ?? '분석 대기'}</Text>
+              <Text style={styles.meta}>요청사항: {item.requestNote ?? '요청사항 없음'}</Text>
             </View>
             <StatusBadge status={item.status} />
           </Pressable>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { RepairStatus, STATUS_FLOW } from '../../context/RepairCasesContext';
+import { RepairStatus, STATUS_FLOW, STATUS_LABEL } from '../../context/RepairCasesContext';
 import { colors, radius, spacing } from '../../styles/theme';
 
 export const StatusStepBar = ({ status }: { status: RepairStatus }) => {
@@ -14,7 +14,7 @@ export const StatusStepBar = ({ status }: { status: RepairStatus }) => {
           return <View key={step} style={[styles.barItem, active && styles.barItemActive]} />;
         })}
       </View>
-      <Text style={styles.label}>현재 단계: {status}</Text>
+      <Text style={styles.label}>현재 단계: {STATUS_LABEL[status]}</Text>
     </View>
   );
 };

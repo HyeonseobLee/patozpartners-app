@@ -2,22 +2,23 @@ import React, { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
-import { useRepairCases } from '../../context/RepairCasesContext';
+import { RepairStatus, STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { colors, radius, spacing } from '../../styles/theme';
 import { StatusBadge } from '../../components/partners/StatusBadge';
 import { StatusStepBar } from '../../components/partners/StatusStepBar';
 
 type Props = NativeStackScreenProps<RepairStackParamList, 'RepairManageDetail'>;
 
-export const RepairManageScreen = ({ route }: Props) => {
+export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const { caseId } = route.params;
-  const { findCase, addRepairItem, toggleRepairItem, goToNextStatus, goToPrevStatus, sendEstimate } = useRepairCases();
+  const { findCase, addRepairItem, saveEta, toggleRepairItem, setStatus, sendEstimate } = useRepairCases();
   const item = findCase(caseId);
 
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [expectedHours, setExpectedHours] = useState('');
   const [actualHours, setActualHours] = useState('');
+  const [etaText, setEtaText] = useState(item?.etaText ?? '');
   const [estimateAmount, setEstimateAmount] = useState(String(item?.estimate?.amount ?? ''));
   const [estimateNote, setEstimateNote] = useState(item?.estimate?.note ?? '');
 
@@ -44,12 +45,19 @@ export const RepairManageScreen = ({ route }: Props) => {
     setActualHours('');
   };
 
-  const onSendEstimate = () => {
+  const onSaveEta = () => {
+    saveEta(item.id, etaText);
+    Alert.alert('저장 완료', '완료 예정 시간이 고객 앱에 반영됩니다.');
+  };
+
+  const onSendEstimate = async (additional = false) => {
     const amount = Number(estimateAmount);
     if (!amount) return;
-    sendEstimate(item.id, amount, estimateNote);
-    Alert.alert('견적 전송', '견적이 고객에게 전달되었습니다');
+    await sendEstimate(item.id, amount, estimateNote, { additional });
+    Alert.alert('견적 전송', additional ? '추가 견적이 고객에게 전달되었습니다' : '견적이 고객에게 전달되었습니다');
   };
+
+  const onSelectStatus = (status: RepairStatus) => setStatus(item.id, status);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -62,9 +70,23 @@ export const RepairManageScreen = ({ route }: Props) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>작업 내용 추가</Text>
-        <TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="항목명 (예: 브레이크 패드 교체)" />
-        <TextInput value={note} onChangeText={setNote} style={styles.input} placeholder="메모" />
+        <Text style={styles.sectionTitle}>수리 상태 변경 (REGISTERED ~ FINISHED)</Text>
+        <View style={styles.statusWrap}>
+          {STATUS_FLOW.map((status) => {
+            const selected = status === item.status;
+            return (
+              <Pressable key={status} style={[styles.statusButton, selected && styles.statusButtonActive]} onPress={() => onSelectStatus(status)}>
+                <Text style={[styles.statusButtonText, selected && styles.statusButtonTextActive]}>{STATUS_LABEL[status]}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>작업 내용 및 완료 예정 시간</Text>
+        <TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="항목명 (예: 타이어 교체)" />
+        <TextInput value={note} onChangeText={setNote} style={styles.input} placeholder="작업 상세 메모" />
         <View style={styles.row}>
           <TextInput
             value={expectedHours}
@@ -81,9 +103,15 @@ export const RepairManageScreen = ({ route }: Props) => {
             keyboardType="numeric"
           />
         </View>
-        <Pressable style={styles.secondaryButton} onPress={onAddRepairItem}>
-          <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
-        </Pressable>
+        <TextInput value={etaText} onChangeText={setEtaText} style={styles.input} placeholder="완료 예정 시간 (예: 오늘 18:30)" />
+        <View style={styles.row}>
+          <Pressable style={[styles.secondaryButton, styles.flex1]} onPress={onAddRepairItem}>
+            <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButton, styles.flex1]} onPress={onSaveEta}>
+            <Text style={styles.secondaryButtonText}>완료 예정 저장</Text>
+          </Pressable>
+        </View>
 
         {item.repairItems.map((repairItem) => (
           <Pressable key={repairItem.id} style={styles.itemRow} onPress={() => toggleRepairItem(item.id, repairItem.id)}>
@@ -97,9 +125,9 @@ export const RepairManageScreen = ({ route }: Props) => {
         ))}
       </View>
 
-      {item.status === '견적 전달' && (
+      {(item.status === 'INSPECTING' || item.status === 'PARTS_PENDING') && (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>견적 전달</Text>
+          <Text style={styles.sectionTitle}>{item.status === 'INSPECTING' ? '견적서 보내기' : '추가 견적 보내기'}</Text>
           <TextInput
             value={estimateAmount}
             onChangeText={setEstimateAmount}
@@ -114,20 +142,11 @@ export const RepairManageScreen = ({ route }: Props) => {
             multiline
             placeholder="견적 요약 메모"
           />
-          <Pressable style={styles.secondaryButton} onPress={onSendEstimate}>
-            <Text style={styles.secondaryButtonText}>고객에게 견적 보내기</Text>
+          <Pressable style={styles.primaryButton} onPress={() => onSendEstimate(item.status === 'PARTS_PENDING')}>
+            <Text style={styles.primaryButtonText}>{item.status === 'INSPECTING' ? '고객에게 견적 보내기' : '고객에게 추가 견적 보내기'}</Text>
           </Pressable>
         </View>
       )}
-
-      <View style={styles.row}>
-        <Pressable style={styles.lightButton} onPress={() => goToPrevStatus(item.id)}>
-          <Text style={styles.lightButtonText}>이전 단계</Text>
-        </Pressable>
-        <Pressable style={styles.primaryButton} onPress={() => goToNextStatus(item.id)}>
-          <Text style={styles.primaryButtonText}>다음 단계로</Text>
-        </Pressable>
-      </View>
 
       {(item.repairCompletedAt || item.pickupCompletedAt) && (
         <View style={styles.card}>
@@ -139,6 +158,8 @@ export const RepairManageScreen = ({ route }: Props) => {
     </ScrollView>
   );
 };
+
+export const RepairManageScreen = RepairStatusUpdateScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
@@ -155,6 +176,18 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
   meta: { fontSize: 12, color: colors.textSecondary },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  statusWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  statusButton: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.white,
+  },
+  statusButtonActive: { backgroundColor: colors.brand, borderColor: colors.brand },
+  statusButtonText: { color: colors.textSecondary, fontWeight: '600', fontSize: 12 },
+  statusButtonTextActive: { color: colors.white },
   input: {
     borderWidth: 1,
     borderColor: colors.borderSoft,
@@ -191,18 +224,7 @@ const styles = StyleSheet.create({
   checkboxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   itemTitle: { fontSize: 14, color: colors.textPrimary, fontWeight: '700' },
   itemMeta: { fontSize: 12, color: colors.textSecondary },
-  lightButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    backgroundColor: colors.white,
-  },
-  lightButtonText: { color: colors.textSecondary, fontWeight: '600', fontSize: 12 },
   primaryButton: {
-    flex: 2,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     alignItems: 'center',
