@@ -1,19 +1,19 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import NewRequestScreen from '../screens/NewRequestScreen';
-import InProgressScreen from '../screens/InProgressScreen';
-import StoreManagementScreen from '../screens/StoreManagementScreen';
+import RepairManageScreen from '../screens/RepairManageScreen';
+import ReportScreen from '../screens/ReportScreen';
 import { colors } from '../styles/theme';
 
 export type PartnerTabParamList = {
   NewRequest: undefined;
-  InProgress: undefined;
-  StoreManagement: undefined;
+  RepairManage: undefined;
+  RepairReport: undefined;
 };
 
 const Tab = createBottomTabNavigator<PartnerTabParamList>();
 
-const MainNavigator = () => {
+const PartnerNavigator = () => {
   return (
     <Tab.Navigator
       screenOptions={{
@@ -25,11 +25,10 @@ const MainNavigator = () => {
       }}
     >
       <Tab.Screen name="NewRequest" component={NewRequestScreen} options={{ title: '신규 요청' }} />
-      <Tab.Screen name="InProgress" component={InProgressScreen} options={{ title: '진행 중' }} />
-      <Tab.Screen name="StoreManagement" component={StoreManagementScreen} options={{ title: '매장 관리' }} />
+      <Tab.Screen name="RepairManage" component={RepairManageScreen} options={{ title: '수리 관리' }} />
+      <Tab.Screen name="RepairReport" component={ReportScreen} options={{ title: '수리 리포트' }} />
     </Tab.Navigator>
   );
 };
 
-export { MainNavigator };
-export default MainNavigator;
+export default PartnerNavigator;
