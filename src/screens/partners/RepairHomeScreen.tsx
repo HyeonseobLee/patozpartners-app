@@ -13,11 +13,14 @@ export const RepairHomeScreen = ({ navigation }: Props) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const filteredCases = useMemo(() => {
+    const manageableCases = cases.filter((item) => item.status !== 'NEW_REQUEST');
     if (selectedStatus === 'ALL') {
-      return cases;
+      return manageableCases;
     }
-    return cases.filter((item) => item.status === selectedStatus);
+    return manageableCases.filter((item) => item.status === selectedStatus);
   }, [cases, selectedStatus]);
+
+  const filterStatuses = useMemo(() => STATUS_FLOW.filter((status) => status !== 'NEW_REQUEST'), []);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -38,7 +41,7 @@ export const RepairHomeScreen = ({ navigation }: Props) => {
             >
               <Text style={styles.dropdownOptionText}>전체 상태</Text>
             </Pressable>
-            {STATUS_FLOW.map((status) => (
+            {filterStatuses.map((status) => (
               <Pressable
                 key={status}
                 style={[styles.dropdownOption, selectedStatus === status && styles.dropdownOptionActive]}
