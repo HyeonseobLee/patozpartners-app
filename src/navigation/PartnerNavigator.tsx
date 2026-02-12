@@ -5,6 +5,7 @@ import { RepairHomeScreen } from '../screens/partners/RepairHomeScreen';
 import { RepairManageScreen } from '../screens/partners/RepairManageScreen';
 import { ReportScreen } from '../screens/partners/ReportScreen';
 import NewRequestScreen from '../screens/NewRequestScreen';
+import StoreManagementScreen from '../screens/StoreManagementScreen';
 import { RepairStackParamList, ReportStackParamList } from './partnersTypes';
 import { RepairCasesProvider } from '../context/RepairCasesContext';
 import { colors } from '../styles/theme';
@@ -40,6 +41,7 @@ const PartnerNavigator = () => {
         <Tab.Screen name="NewRequest" component={NewRequestScreen} options={{ title: '신규 요청' }} />
         <Tab.Screen name="RepairManage" component={RepairStackScreen} options={{ title: '수리 관리' }} />
         <Tab.Screen name="RepairReport" component={ReportStackScreen} options={{ title: '수리 리포트' }} />
+        <Tab.Screen name="StoreFinder" component={StoreManagementScreen} options={{ title: '매장 찾기' }} />
       </Tab.Navigator>
     </RepairCasesProvider>
   );
