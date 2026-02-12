@@ -1,5 +1,5 @@
-export type QueueStackParamList = {
-  QueueHome: undefined;
+export type NewRequestStackParamList = {
+  NewRequestHome: undefined;
   RepairManageDetail: { caseId: string };
 };
 

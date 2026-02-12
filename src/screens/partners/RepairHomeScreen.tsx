@@ -1,37 +1,121 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useRepairCases } from '../../context/RepairCasesContext';
+import { RepairStatus, STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
 import { colors, radius, spacing } from '../../styles/theme';
-import { StatusBadge } from '../../components/partners/StatusBadge';
 
 type Props = NativeStackScreenProps<RepairStackParamList, 'RepairHome'>;
 
 export const RepairHomeScreen = ({ navigation }: Props) => {
   const { cases } = useRepairCases();
+  const [selectedStatus, setSelectedStatus] = useState<'ALL' | RepairStatus>('ALL');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const filteredCases = useMemo(() => {
+    if (selectedStatus === 'ALL') {
+      return cases;
+    }
+    return cases.filter((item) => item.status === selectedStatus);
+  }, [cases, selectedStatus]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>수리 관리</Text>
 
-      {cases.map((item) => (
-        <Pressable key={item.id} style={styles.card} onPress={() => navigation.push('RepairManageDetail', { caseId: item.id })}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.model}>{item.deviceModel}</Text>
-            <Text style={styles.meta}>{item.intakeNumber}</Text>
-          </View>
-          <StatusBadge status={item.status} />
+      <View style={styles.filterWrap}>
+        <Text style={styles.filterLabel}>상태 필터</Text>
+        <Pressable style={styles.dropdownButton} onPress={() => setDropdownOpen((prev) => !prev)}>
+          <Text style={styles.dropdownText}>{selectedStatus === 'ALL' ? '전체 상태' : STATUS_LABEL[selectedStatus]}</Text>
+          <Text style={styles.dropdownArrow}>{dropdownOpen ? '▲' : '▼'}</Text>
         </Pressable>
-      ))}
+        {dropdownOpen && (
+          <View style={styles.dropdownMenu}>
+            <Pressable
+              style={[styles.dropdownOption, selectedStatus === 'ALL' && styles.dropdownOptionActive]}
+              onPress={() => {
+                setSelectedStatus('ALL');
+                setDropdownOpen(false);
+              }}
+            >
+              <Text style={styles.dropdownOptionText}>전체 상태</Text>
+            </Pressable>
+            {STATUS_FLOW.map((status) => (
+              <Pressable
+                key={status}
+                style={[styles.dropdownOption, selectedStatus === status && styles.dropdownOptionActive]}
+                onPress={() => {
+                  setSelectedStatus(status);
+                  setDropdownOpen(false);
+                }}
+              >
+                <Text style={styles.dropdownOptionText}>{STATUS_LABEL[status]}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {filteredCases.map((item) => {
+        const isPriority = item.status === 'NEW_REQUEST' || item.status === 'ESTIMATE_ACCEPTED';
+        return (
+          <Pressable
+            key={item.id}
+            style={[styles.card, isPriority && styles.priorityCard, item.status === 'NEW_REQUEST' && styles.newRequestCard]}
+            onPress={() => navigation.push('RepairManageDetail', { caseId: item.id })}
+          >
+            <View style={{ flex: 1, gap: spacing.xxs }}>
+              <Text style={styles.model}>{item.deviceModel}</Text>
+              <Text style={styles.meta}>접수번호: {item.intakeNumber}</Text>
+              <Text style={styles.meta}>고객명: {item.customerName ?? '미입력'}</Text>
+              <Text style={styles.meta}>연락처: {item.customerPhone ?? '미입력'}</Text>
+            </View>
+            <Text style={[styles.statusText, statusTone[item.status]]}>{STATUS_LABEL[item.status]}</Text>
+          </Pressable>
+        );
+      })}
+
+      {filteredCases.length === 0 && <Text style={styles.emptyText}>선택한 상태의 요청이 없습니다.</Text>}
     </ScrollView>
   );
 };
 
+const statusTone: Record<RepairStatus, { color: string }> = {
+  NEW_REQUEST: { color: '#D97706' },
+  ESTIMATE_PENDING: { color: '#2563EB' },
+  ESTIMATE_ACCEPTED: { color: '#059669' },
+};
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, gap: spacing.sm },
+  content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary },
+  filterWrap: { gap: spacing.xs, zIndex: 10 },
+  filterLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
+  dropdownButton: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: radius.md,
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dropdownText: { color: colors.textPrimary, fontWeight: '600' },
+  dropdownArrow: { color: colors.textSecondary, fontSize: 12 },
+  dropdownMenu: {
+    marginTop: spacing.xxs,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: radius.md,
+    backgroundColor: colors.white,
+    overflow: 'hidden',
+  },
+  dropdownOption: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  dropdownOptionActive: { backgroundColor: colors.brandSoft },
+  dropdownOptionText: { color: colors.textPrimary, fontWeight: '500' },
   card: {
     backgroundColor: colors.white,
     borderRadius: radius.lg,
@@ -41,6 +125,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  priorityCard: {
+    borderWidth: 2,
+    borderColor: colors.royalBlue,
+    backgroundColor: '#F8FAFF',
+  },
+  newRequestCard: {
+    backgroundColor: '#FFFBEB',
+  },
   model: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  meta: { marginTop: 3, color: colors.textSecondary, fontSize: 12 },
+  meta: { color: colors.textSecondary, fontSize: 12 },
+  statusText: { fontWeight: '800', fontSize: 13 },
+  emptyText: { textAlign: 'center', marginTop: spacing.md, color: colors.textSecondary },
 });

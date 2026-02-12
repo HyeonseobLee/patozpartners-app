@@ -2,10 +2,10 @@ import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
-import { QueueStackParamList } from '../../navigation/partnersTypes';
+import { NewRequestStackParamList } from '../../navigation/partnersTypes';
 import { colors, radius, spacing } from '../../styles/theme';
 
-type Props = NativeStackScreenProps<QueueStackParamList, 'QueueHome'>;
+type Props = NativeStackScreenProps<NewRequestStackParamList, 'NewRequestHome'>;
 
 export const QueueScreen = ({ navigation }: Props) => {
   const { cases } = useRepairCases();
