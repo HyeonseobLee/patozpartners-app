@@ -11,7 +11,7 @@ const NewRequestScreen = () => {
   const newRequests = useMemo(() => cases.filter((item) => STATUS_LABEL[item.status] === '신규 접수'), [cases]);
 
   const handleSendEstimate = (id: string) => {
-    setStatus(id, 'INSPECTING');
+    setStatus(id, 'ESTIMATE_PENDING');
     navigation.navigate('RepairManage' as never);
   };
 

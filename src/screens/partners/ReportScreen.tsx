@@ -20,7 +20,7 @@ export const ReportScreen = () => {
 
   const metrics = useMemo(() => {
     const rangeCases = cases.filter((item) => isInRange(item.intakeAt, range));
-    const finished = rangeCases.filter((item) => item.status === 'COMPLETED');
+    const finished = rangeCases.filter((item) => item.status === 'ESTIMATE_ACCEPTED');
     const revenue = finished.reduce((sum, item) => {
       const selectedEstimate = item.estimates.find((estimate) => estimate.id === item.selectedEstimateId) ?? item.estimates[0];
       return sum + (selectedEstimate?.amount ?? 0);
@@ -64,7 +64,7 @@ export const ReportScreen = () => {
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>핵심 지표 ({range})</Text>
-        <Text style={styles.metricLine}>수리 완료 건수: {metrics.totalFinished}건</Text>
+        <Text style={styles.metricLine}>견적 수락 건수: {metrics.totalFinished}건</Text>
         <Text style={styles.metricLine}>매출액: {metrics.revenue.toLocaleString()}원</Text>
         <Text style={styles.metricLine}>전체 입고 건수: {metrics.totalReceived}건</Text>
       </View>

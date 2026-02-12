@@ -1,15 +1,13 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
-export const STATUS_FLOW = ['RECEIVED', 'INSPECTING', 'PARTS_PREPARING', 'REPAIRING', 'COMPLETED'] as const;
+export const STATUS_FLOW = ['NEW_REQUEST', 'ESTIMATE_PENDING', 'ESTIMATE_ACCEPTED'] as const;
 
 export type RepairStatus = (typeof STATUS_FLOW)[number];
 
 export const STATUS_LABEL: Record<RepairStatus, string> = {
-  RECEIVED: '접수 완료',
-  INSPECTING: '점검 중',
-  PARTS_PREPARING: '부품 준비',
-  REPAIRING: '수리 중',
-  COMPLETED: '완료',
+  NEW_REQUEST: '신규 요청',
+  ESTIMATE_PENDING: '견적 확인 중',
+  ESTIMATE_ACCEPTED: '견적 수락',
 };
 
 export type RepairItem = {
@@ -38,6 +36,7 @@ export type RepairTimeline = {
 export type RepairCase = {
   id: string;
   customerName?: string;
+  customerPhone?: string;
   customerLocation?: string;
   requestNote?: string;
   rating?: number;
@@ -49,11 +48,8 @@ export type RepairCase = {
   estimates: Estimate[];
   selectedEstimateId?: string;
   repairItems: RepairItem[];
-  repairChecklistReady?: boolean;
   timeline: RepairTimeline[];
-  expectedTimeText?: string;
-  actualTimeText?: string;
-  repairCompletedAt?: string;
+  completionDueAt?: string;
 };
 
 type RepairCasesContextType = {
@@ -61,8 +57,9 @@ type RepairCasesContextType = {
   setStatus: (id: string, status: RepairStatus) => boolean;
   goToNextStatus: (id: string) => void;
   goToPrevStatus: (id: string) => void;
-  saveEta: (id: string, expectedTimeText: string, options?: { actualTimeText?: string; checklistReady?: boolean }) => void;
+  saveCompletionDueAt: (id: string, completionDueAt: string) => void;
   toggleRepairItem: (id: string, itemId: string) => void;
+  addRepairItem: (id: string, payload: { title: string; note?: string }) => void;
   sendEstimate: (id: string, amount: number, note: string, options?: { additional?: boolean }) => Promise<void>;
   findCase: (id?: string) => RepairCase | undefined;
 };
@@ -83,17 +80,11 @@ const withStatusTransition = (repairCase: RepairCase, status: RepairStatus): Rep
     return repairCase;
   }
 
-  const nextCase: RepairCase = {
+  return {
     ...repairCase,
     status,
     timeline: [...repairCase.timeline, createTimeline(status, repairCase.repairItems)],
   };
-
-  if (status === 'COMPLETED' && !repairCase.repairCompletedAt) {
-    nextCase.repairCompletedAt = nowIso();
-  }
-
-  return nextCase;
 };
 
 const defaultChecklist = [
@@ -106,27 +97,29 @@ const initialCases: RepairCase[] = [
   {
     id: 'RC-1001',
     customerName: '김민수',
+    customerPhone: '010-3210-4321',
     customerLocation: '강남구 역삼동',
     requestNote: '출퇴근 전 빠른 점검 요청',
     deviceModel: 'Road Bike Pro 3',
     serialNumber: 'RBP3-2391-AX',
     intakeNumber: 'IN-2026-0001',
     intakeAt: '2026-02-11T09:10:00.000Z',
-    status: 'RECEIVED',
+    status: 'NEW_REQUEST',
     estimates: [],
     repairItems: defaultChecklist,
-    timeline: [{ status: 'RECEIVED', statusLabel: STATUS_LABEL.RECEIVED, updatedAt: '2026-02-11T09:10:00.000Z', completedRepairItems: [] }],
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-11T09:10:00.000Z', completedRepairItems: [] }],
   },
   {
     id: 'RC-1002',
     customerName: '박지우',
+    customerPhone: '010-8876-1123',
     customerLocation: '송파구 잠실동',
     requestNote: '배터리 지속시간 저하 및 제동 소음',
     deviceModel: 'Urban E-Bike M2',
     serialNumber: 'UEM2-7710-QP',
     intakeNumber: 'IN-2026-0002',
     intakeAt: '2026-02-11T10:10:00.000Z',
-    status: 'PARTS_PREPARING',
+    status: 'ESTIMATE_PENDING',
     estimates: [
       {
         id: 'EST-2026-10021',
@@ -136,28 +129,27 @@ const initialCases: RepairCase[] = [
       },
     ],
     selectedEstimateId: 'EST-2026-10021',
-    repairChecklistReady: true,
     repairItems: [
       { id: 'CHECK-1', title: '브레이크/제동 상태 점검', done: true, completedAt: '2026-02-11T11:05:00.000Z' },
       { id: 'CHECK-2', title: '배터리 및 전장 상태 점검', done: true, completedAt: '2026-02-11T11:12:00.000Z' },
       { id: 'CHECK-3', title: '구동계/체인 장력 점검', done: false },
     ],
     timeline: [
-      { status: 'RECEIVED', statusLabel: STATUS_LABEL.RECEIVED, updatedAt: '2026-02-11T10:10:00.000Z', completedRepairItems: [] },
-      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-11T10:40:00.000Z', completedRepairItems: [] },
-      { status: 'PARTS_PREPARING', statusLabel: STATUS_LABEL.PARTS_PREPARING, updatedAt: '2026-02-11T11:20:00.000Z', completedRepairItems: ['브레이크/제동 상태 점검'] },
+      { status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-11T10:10:00.000Z', completedRepairItems: [] },
+      { status: 'ESTIMATE_PENDING', statusLabel: STATUS_LABEL.ESTIMATE_PENDING, updatedAt: '2026-02-11T11:20:00.000Z', completedRepairItems: ['브레이크/제동 상태 점검'] },
     ],
   },
   {
     id: 'RC-1003',
     customerName: '이지은',
+    customerPhone: '010-2100-5632',
     customerLocation: '마포구 서교동',
     requestNote: '체인 소음 및 제동력 저하',
     deviceModel: 'City Fold Mini',
     serialNumber: 'CFM-3221-KK',
     intakeNumber: 'IN-2026-0003',
     intakeAt: '2026-02-10T16:45:00.000Z',
-    status: 'REPAIRING',
+    status: 'ESTIMATE_ACCEPTED',
     estimates: [
       {
         id: 'EST-2026-10031',
@@ -167,17 +159,20 @@ const initialCases: RepairCase[] = [
       },
     ],
     selectedEstimateId: 'EST-2026-10031',
-    repairChecklistReady: true,
     repairItems: [
       { id: 'CHECK-1', title: '브레이크/제동 상태 점검', note: '앞바퀴 패드 마모 확인', done: true, completedAt: '2026-02-11T07:45:00.000Z' },
       { id: 'CHECK-2', title: '배터리 및 전장 상태 점검', done: false },
       { id: 'CHECK-3', title: '구동계/체인 장력 점검', done: false },
     ],
     timeline: [
-      { status: 'RECEIVED', statusLabel: STATUS_LABEL.RECEIVED, updatedAt: '2026-02-10T16:45:00.000Z', completedRepairItems: [] },
-      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-10T19:10:00.000Z', completedRepairItems: [] },
-      { status: 'PARTS_PREPARING', statusLabel: STATUS_LABEL.PARTS_PREPARING, updatedAt: '2026-02-11T07:30:00.000Z', completedRepairItems: [] },
-      { status: 'REPAIRING', statusLabel: STATUS_LABEL.REPAIRING, updatedAt: '2026-02-11T08:40:00.000Z', completedRepairItems: ['브레이크/제동 상태 점검'] },
+      { status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-10T16:45:00.000Z', completedRepairItems: [] },
+      { status: 'ESTIMATE_PENDING', statusLabel: STATUS_LABEL.ESTIMATE_PENDING, updatedAt: '2026-02-10T19:10:00.000Z', completedRepairItems: [] },
+      {
+        status: 'ESTIMATE_ACCEPTED',
+        statusLabel: STATUS_LABEL.ESTIMATE_ACCEPTED,
+        updatedAt: '2026-02-11T08:40:00.000Z',
+        completedRepairItems: ['브레이크/제동 상태 점검'],
+      },
     ],
   },
 ];
@@ -224,13 +219,11 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     );
   };
 
-  const saveEta = (id: string, expectedTimeText: string, options?: { actualTimeText?: string; checklistReady?: boolean }) => {
+  const saveCompletionDueAt = (id: string, completionDueAt: string) => {
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
-        expectedTimeText,
-        actualTimeText: options?.actualTimeText ?? item.actualTimeText,
-        repairChecklistReady: options?.checklistReady ?? item.repairChecklistReady,
+        completionDueAt,
       })),
     );
   };
@@ -248,6 +241,20 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
               }
             : repairItem,
         ),
+      })),
+    );
+  };
+
+  const addRepairItem = (id: string, payload: { title: string; note?: string }) => {
+    const title = payload.title.trim();
+    if (!title) {
+      return;
+    }
+
+    setCases((prev) =>
+      updateCase(prev, id, (item) => ({
+        ...item,
+        repairItems: [{ id: `ITEM-${Date.now()}`, title, note: payload.note?.trim(), done: false }, ...item.repairItems],
       })),
     );
   };
@@ -282,8 +289,9 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       setStatus,
       goToNextStatus,
       goToPrevStatus,
-      saveEta,
+      saveCompletionDueAt,
       toggleRepairItem,
+      addRepairItem,
       sendEstimate,
       findCase,
     }),

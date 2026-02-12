@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
@@ -9,16 +9,40 @@ import { StatusStepBar } from '../../components/partners/StatusStepBar';
 
 type Props = NativeStackScreenProps<RepairStackParamList, 'RepairManageDetail'>;
 
+const createDateList = () => {
+  const list: string[] = [];
+  const base = new Date();
+  for (let i = 0; i < 21; i += 1) {
+    const target = new Date(base);
+    target.setDate(base.getDate() + i);
+    list.push(target.toISOString().slice(0, 10));
+  }
+  return list;
+};
+
+const timeSlots = Array.from({ length: 48 }, (_, idx) => {
+  const hours = Math.floor(idx / 2)
+    .toString()
+    .padStart(2, '0');
+  const minutes = idx % 2 === 0 ? '00' : '30';
+  return `${hours}:${minutes}`;
+});
+
 export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const { caseId } = route.params;
-  const { findCase, saveEta, toggleRepairItem, setStatus, sendEstimate } = useRepairCases();
+  const { findCase, saveCompletionDueAt, toggleRepairItem, setStatus, sendEstimate, addRepairItem } = useRepairCases();
   const item = findCase(caseId);
 
   const [estimateAmount, setEstimateAmount] = useState('');
   const [estimateNote, setEstimateNote] = useState('');
-  const [expectedTimeText, setExpectedTimeText] = useState(item?.expectedTimeText ?? '');
-  const [actualTimeText, setActualTimeText] = useState(item?.actualTimeText ?? '');
+  const [dueDate, setDueDate] = useState(item?.completionDueAt?.slice(0, 10) ?? '');
+  const [dueTime, setDueTime] = useState(item?.completionDueAt?.slice(11, 16) ?? '09:00');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [newItemTitle, setNewItemTitle] = useState('');
+  const [newItemNote, setNewItemNote] = useState('');
 
+  const upcomingDates = useMemo(() => createDateList(), []);
 
   if (!item) {
     return (
@@ -28,8 +52,9 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
     );
   }
 
-  const onSaveTimes = () => {
-    saveEta(item.id, expectedTimeText, { actualTimeText, checklistReady: true });
+  const onSaveDueDate = () => {
+    if (!dueDate || !dueTime) return;
+    saveCompletionDueAt(item.id, `${dueDate}T${dueTime}:00.000Z`);
   };
 
   const onSendEstimate = async () => {
@@ -45,7 +70,13 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
     setStatus(item.id, status);
   };
 
-  const canShowRepairItems = item.status !== 'RECEIVED' || !!item.repairChecklistReady;
+  const onAddRepairItem = () => {
+    addRepairItem(item.id, { title: newItemTitle, note: newItemNote });
+    setNewItemTitle('');
+    setNewItemNote('');
+  };
+
+  const canShowRepairItems = item.status === 'ESTIMATE_ACCEPTED';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -53,16 +84,29 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
         <Text style={styles.title}>{item.deviceModel}</Text>
         <Text style={styles.meta}>시리얼: {item.serialNumber}</Text>
         <Text style={styles.meta}>접수번호: {item.intakeNumber}</Text>
+        <Text style={styles.meta}>고객명: {item.customerName ?? '미입력'}</Text>
+        <Text style={styles.meta}>연락처: {item.customerPhone ?? '미입력'}</Text>
         <StatusBadge status={item.status} />
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>진행 단계</Text>
-        <StatusStepBar status={item.status} />
+        <Text style={styles.sectionTitle}>전송 견적 리스트</Text>
+        {item.estimates.length === 0 && <Text style={styles.meta}>전송된 견적이 없습니다.</Text>}
+        {item.estimates.map((estimate) => {
+          const selected = estimate.id === item.selectedEstimateId;
+          return (
+            <View key={estimate.id} style={[styles.quoteCard, selected && styles.quoteCardSelected]}>
+              <Text style={styles.itemTitle}>{estimate.amount.toLocaleString()}원</Text>
+              <Text style={styles.itemMeta}>{estimate.note}</Text>
+              <Text style={styles.itemMeta}>전송 시각: {new Date(estimate.sentAt).toLocaleString()}</Text>
+            </View>
+          );
+        })}
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>상태 변경</Text>
+        <Text style={styles.sectionTitle}>진행 상태 관리</Text>
+        <StatusStepBar status={item.status} />
         <View style={styles.statusWrap}>
           {STATUS_FLOW.map((status) => {
             const selected = status === item.status;
@@ -76,64 +120,85 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>예상/실제 시간</Text>
-        <TextInput
-          value={expectedTimeText}
-          onChangeText={setExpectedTimeText}
-          style={styles.input}
-          placeholder="예상 시간 (예: 2026-02-12 15:00)"
-        />
-        <TextInput
-          value={actualTimeText}
-          onChangeText={setActualTimeText}
-          style={styles.input}
-          placeholder="실제 시간 (예: 2026-02-12 16:20)"
-        />
-        <Pressable style={styles.primaryButton} onPress={onSaveTimes}>
-          <Text style={styles.primaryButtonText}>저장</Text>
+        <Text style={styles.sectionTitle}>완료 예정 일시</Text>
+        <Pressable style={styles.selectorButton} onPress={() => setShowCalendar((prev) => !prev)}>
+          <Text style={styles.selectorText}>{dueDate || '날짜 선택'}</Text>
+          <Text style={styles.selectorIcon}>{showCalendar ? '▲' : '📅'}</Text>
+        </Pressable>
+
+        {showCalendar && (
+          <View style={styles.pickerMenu}>
+            {upcomingDates.map((date) => (
+              <Pressable
+                key={date}
+                style={[styles.pickerOption, dueDate === date && styles.pickerOptionActive]}
+                onPress={() => {
+                  setDueDate(date);
+                  setShowCalendar(false);
+                }}
+              >
+                <Text style={styles.pickerOptionText}>{date}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        <Pressable style={styles.selectorButton} onPress={() => setShowTimePicker((prev) => !prev)}>
+          <Text style={styles.selectorText}>{dueTime}</Text>
+          <Text style={styles.selectorIcon}>{showTimePicker ? '▲' : '🕒'}</Text>
+        </Pressable>
+
+        {showTimePicker && (
+          <View style={styles.pickerMenu}>
+            {timeSlots.map((slot) => (
+              <Pressable
+                key={slot}
+                style={[styles.pickerOption, dueTime === slot && styles.pickerOptionActive]}
+                onPress={() => {
+                  setDueTime(slot);
+                  setShowTimePicker(false);
+                }}
+              >
+                <Text style={styles.pickerOptionText}>{slot}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        <Pressable style={styles.primaryButton} onPress={onSaveDueDate}>
+          <Text style={styles.primaryButtonText}>완료 예정 일시 저장</Text>
         </Pressable>
       </View>
 
       {canShowRepairItems && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>수리 항목</Text>
+          <TextInput value={newItemTitle} onChangeText={setNewItemTitle} style={styles.input} placeholder="수리 항목 이름" />
+          <TextInput value={newItemNote} onChangeText={setNewItemNote} style={styles.input} placeholder="메모 (선택)" />
+          <Pressable style={styles.secondaryButton} onPress={onAddRepairItem}>
+            <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
+          </Pressable>
+
           {item.repairItems.map((repairItem) => (
-            <Pressable key={repairItem.id} style={styles.itemRow} onPress={() => toggleRepairItem(item.id, repairItem.id)}>
-              <View style={[styles.checkbox, repairItem.done && styles.checkboxOn]} />
+            <Pressable key={repairItem.id} style={[styles.itemRow, repairItem.done && styles.itemRowDone]} onPress={() => toggleRepairItem(item.id, repairItem.id)}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>{repairItem.title}</Text>
-                {!!repairItem.note && <Text style={styles.itemMeta}>{repairItem.note}</Text>}
+                <Text style={[styles.itemTitle, repairItem.done && styles.itemTitleDone]}>{repairItem.title}</Text>
+                {!!repairItem.note && <Text style={[styles.itemMeta, repairItem.done && styles.itemMetaDone]}>{repairItem.note}</Text>}
                 {!!repairItem.completedAt && <Text style={styles.itemMeta}>완료 시각: {new Date(repairItem.completedAt).toLocaleString()}</Text>}
               </View>
-              <Text style={styles.itemMeta}>{repairItem.done ? '완료' : '미완료'}</Text>
+              <Text style={[styles.itemStateText, repairItem.done && styles.itemStateTextDone]}>{repairItem.done ? '완료 ✓' : '미완료'}</Text>
             </Pressable>
           ))}
         </View>
       )}
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>견적 전송/확인</Text>
+        <Text style={styles.sectionTitle}>견적 전송</Text>
         <TextInput value={estimateAmount} onChangeText={setEstimateAmount} style={styles.input} placeholder="견적 금액" keyboardType="numeric" />
         <TextInput value={estimateNote} onChangeText={setEstimateNote} style={styles.input} placeholder="견적 메모" />
         <Pressable style={styles.primaryButton} onPress={onSendEstimate}>
           <Text style={styles.primaryButtonText}>견적 전송</Text>
         </Pressable>
-
-        <View style={styles.quoteListWrap}>
-          <Text style={styles.quoteTitle}>전송된 견적 리스트</Text>
-          {item.estimates.length === 0 && <Text style={styles.meta}>전송된 견적이 없습니다.</Text>}
-          {item.estimates.map((estimate) => {
-            const selected = estimate.id === item.selectedEstimateId;
-            return (
-              <View key={estimate.id} style={[styles.quoteCard, selected && styles.quoteCardSelected]}>
-                <Text style={styles.itemTitle}>{estimate.amount.toLocaleString()}원</Text>
-                <Text style={styles.itemMeta}>{estimate.note}</Text>
-                <Text style={styles.itemMeta}>전송 시각: {new Date(estimate.sentAt).toLocaleString()}</Text>
-                <Text style={styles.itemMeta}>{selected ? '선택된 견적' : '일반 견적'}</Text>
-              </View>
-            );
-          })}
-        </View>
       </View>
     </ScrollView>
   );
@@ -168,6 +233,26 @@ const styles = StyleSheet.create({
   statusButtonActive: { backgroundColor: colors.brand, borderColor: colors.brand },
   statusButtonText: { color: colors.textSecondary, fontWeight: '600', fontSize: 12 },
   statusButtonTextActive: { color: colors.white },
+  selectorButton: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  selectorText: { color: colors.textPrimary, fontWeight: '600' },
+  selectorIcon: { color: colors.textSecondary },
+  pickerMenu: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: radius.md,
+    maxHeight: 180,
+  },
+  pickerOption: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  pickerOptionActive: { backgroundColor: colors.brandSoft },
+  pickerOptionText: { color: colors.textPrimary },
   input: {
     borderWidth: 1,
     borderColor: colors.borderSoft,
@@ -184,26 +269,32 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     borderRadius: radius.md,
     padding: spacing.sm,
+    backgroundColor: colors.white,
   },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.borderSoft,
+  itemRowDone: {
+    borderColor: '#16A34A',
+    backgroundColor: '#ECFDF5',
   },
-  checkboxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   itemTitle: { fontSize: 14, color: colors.textPrimary, fontWeight: '700' },
+  itemTitleDone: { color: '#166534' },
   itemMeta: { fontSize: 12, color: colors.textSecondary },
+  itemMetaDone: { color: '#15803D' },
+  itemStateText: { fontSize: 12, color: colors.textSecondary, fontWeight: '700' },
+  itemStateTextDone: { color: '#15803D' },
   primaryButton: {
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     alignItems: 'center',
     backgroundColor: colors.brand,
   },
+  secondaryButton: {
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.royalBlueSoft,
+  },
+  secondaryButtonText: { color: colors.royalBlue, fontWeight: '700' },
   primaryButtonText: { color: colors.white, fontWeight: '700' },
-  quoteListWrap: { gap: spacing.xs },
-  quoteTitle: { color: colors.textPrimary, fontWeight: '700' },
   quoteCard: {
     borderRadius: radius.md,
     borderWidth: 1,
