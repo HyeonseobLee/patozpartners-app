@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Svg, { Path } from 'react-native-svg';
 import { RepairHomeScreen } from '../screens/partners/RepairHomeScreen';
-import { RepairManageScreen } from '../screens/partners/RepairManageScreen';
+import { RepairDetailScreen } from '../screens/partners/RepairDetailScreen';
 import { QueueScreen } from '../screens/partners/QueueScreen';
 import { ReportScreen } from '../screens/partners/ReportScreen';
 import { NewRequestStackParamList, RepairStackParamList, ReportStackParamList } from './partnersTypes';
@@ -18,14 +18,14 @@ const ReportStack = createNativeStackNavigator<ReportStackParamList>();
 const NewRequestStackScreen = () => (
   <NewRequestStack.Navigator>
     <NewRequestStack.Screen name="NewRequestHome" component={QueueScreen} options={{ title: '신규 요청' }} />
-    <NewRequestStack.Screen name="RepairManageDetail" component={RepairManageScreen} options={{ title: '수리 상세' }} />
+    <NewRequestStack.Screen name="RepairManageDetail" component={RepairDetailScreen} options={{ title: '수리 상세' }} />
   </NewRequestStack.Navigator>
 );
 
 const RepairStackScreen = () => (
   <RepairStack.Navigator>
     <RepairStack.Screen name="RepairHome" component={RepairHomeScreen} options={{ title: '수리 관리' }} />
-    <RepairStack.Screen name="RepairManageDetail" component={RepairManageScreen} options={{ title: '수리 상세' }} />
+    <RepairStack.Screen name="RepairManageDetail" component={RepairDetailScreen} options={{ title: '수리 상세' }} />
   </RepairStack.Navigator>
 );
 

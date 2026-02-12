@@ -29,6 +29,10 @@ export const QueueScreen = ({ navigation }: Props) => {
               <Text style={styles.meta}>고객: {item.customerName ?? '미입력'}</Text>
               <Text style={styles.meta}>접수번호: {item.intakeNumber}</Text>
               <Text style={styles.meta}>접수시각: {new Date(item.intakeAt).toLocaleString()}</Text>
+              <View style={styles.issueBox}>
+                <Text style={styles.issueTitle}>고장 내역</Text>
+                <Text style={styles.issueText}>{item.requestNote ?? '소비자 고장 내역이 없습니다.'}</Text>
+              </View>
             </View>
           </Pressable>
         ))}
@@ -85,6 +89,24 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  issueBox: {
+    marginTop: spacing.xs,
+    backgroundColor: '#F3F4F6',
+    borderRadius: radius.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    gap: spacing.xxs,
+  },
+  issueTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  issueText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textPrimary,
   },
   emptyText: { textAlign: 'center', color: colors.textSecondary, marginTop: spacing.md },
 });
