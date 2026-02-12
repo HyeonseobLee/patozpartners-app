@@ -290,34 +290,44 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     await ConsumerEstimateInboxApi.pushEstimate(payload);
 
     setCases((prev) =>
-      updateCase(prev, id, (item) => ({
-        ...item,
-        status: item.status === 'NEW_REQUEST' ? 'ESTIMATE_REVIEW' : item.status,
-        estimates: [
-          {
-            id: estimateId,
-            amount,
-            note,
-            sentAt: payload.sentAt,
-            additional: options?.additional,
-          },
-          ...item.estimates,
-        ],
-      })),
+      updateCase(prev, id, (item) => {
+        const nextItem = item.status === 'NEW_REQUEST' ? withStatusTransition(item, 'ESTIMATE_REVIEW') : item;
+        return {
+          ...nextItem,
+          estimates: [
+            {
+              id: estimateId,
+              amount,
+              note,
+              sentAt: payload.sentAt,
+              additional: options?.additional,
+            },
+            ...nextItem.estimates,
+          ],
+        };
+      }),
     );
   };
 
   const confirmEstimateByConsumer = (id: string, estimateId: string) => {
     setCases((prev) =>
-      updateCase(prev, id, (item) => ({
-        ...item,
-        selectedEstimateId: estimateId,
-        estimates: item.estimates.map((estimate) => ({
-          ...estimate,
-          consumerConfirmed: estimate.id === estimateId,
-          consumerConfirmedAt: estimate.id === estimateId ? nowIso() : estimate.consumerConfirmedAt,
-        })),
-      })),
+      updateCase(prev, id, (item) => {
+        const withConfirmedEstimate = {
+          ...item,
+          selectedEstimateId: estimateId,
+          estimates: item.estimates.map((estimate) => ({
+            ...estimate,
+            consumerConfirmed: estimate.id === estimateId,
+            consumerConfirmedAt: estimate.id === estimateId ? nowIso() : estimate.consumerConfirmedAt,
+          })),
+        };
+
+        if (withConfirmedEstimate.status === 'ESTIMATE_REVIEW') {
+          return withStatusTransition(withConfirmedEstimate, 'INSPECTING');
+        }
+
+        return withConfirmedEstimate;
+      }),
     );
   };
 

@@ -68,10 +68,10 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const onSelectStatus = (status: RepairStatus) => {
     if (status === item.status) return;
 
-    Alert.alert('상태 변경 확인', `상태를 ${STATUS_LABEL[status]}로 변경하시겠습니까?`, [
+    Alert.alert('상태 변경', `상태를 ${STATUS_LABEL[status]}로 변경하시겠습니까?`, [
       { text: '취소', style: 'cancel' },
       {
-        text: '변경',
+        text: '확인',
         style: 'default',
         onPress: () => {
           const updated = setStatus(item.id, status);
