@@ -4,7 +4,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MANUAL_STATUS_START_INDEX, STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
 import { colors, radius, spacing } from '../../styles/theme';
-import { StatusBadge } from '../../components/partners/StatusBadge';
 import { StatusStepBar } from '../../components/partners/StatusStepBar';
 
 type Props = NativeStackScreenProps<RepairStackParamList, 'RepairManageDetail'>;
@@ -20,13 +19,7 @@ const createDateList = () => {
   return list;
 };
 
-const timeSlots = Array.from({ length: 48 }, (_, idx) => {
-  const hours = Math.floor(idx / 2)
-    .toString()
-    .padStart(2, '0');
-  const minutes = idx % 2 === 0 ? '00' : '30';
-  return `${hours}:${minutes}`;
-});
+const timeSlots = Array.from({ length: 48 }, (_, idx) => `${Math.floor(idx / 2).toString().padStart(2, '0')}:${idx % 2 === 0 ? '00' : '30'}`);
 
 export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const { caseId } = route.params;
@@ -59,31 +52,12 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const canShowRepairItems = statusIdx >= MANUAL_STATUS_START_INDEX;
   const canShowEstimateComposer = statusIdx < STATUS_FLOW.indexOf('ESTIMATE_ACCEPTED');
 
-  const onSaveDueDate = () => {
-    if (!dueDate || !dueTime) return;
-    saveCompletionDueAt(item.id, `${dueDate}T${dueTime}:00.000Z`);
-  };
-
-  const onSendEstimate = async () => {
-    const amount = Number(estimateAmount);
-    if (!amount) return;
-    await sendEstimate(item.id, amount, estimateNote);
-    setEstimateAmount('');
-    setEstimateNote('');
-  };
-
   const onManualNextStatus = () => {
     if (!nextStatus) return;
     Alert.alert('상태 변경', `상태를 ${STATUS_LABEL[nextStatus]}로 변경하시겠습니까?`, [
       { text: '취소', style: 'cancel' },
       { text: '변경', onPress: () => goToNextStatus(item.id) },
     ]);
-  };
-
-  const onAddRepairItem = () => {
-    addRepairItem(item.id, { title: newItemTitle, note: newItemNote });
-    setNewItemTitle('');
-    setNewItemNote('');
   };
 
   return (
@@ -94,7 +68,17 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
         <Text style={styles.meta}>접수번호: {item.intakeNumber}</Text>
         <Text style={styles.meta}>고객명: {item.customerName ?? '미입력'}</Text>
         <Text style={styles.meta}>연락처: {item.customerPhone ?? '미입력'}</Text>
-        <StatusBadge status={item.status} />
+      </View>
+
+      <View style={styles.card}>
+        <StatusStepBar status={item.status} />
+        {canManuallyMove && nextStatus ? (
+          <Pressable style={styles.primaryButton} onPress={onManualNextStatus}>
+            <Text style={styles.primaryButtonText}>다음 단계로 변경 ({STATUS_LABEL[nextStatus]})</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.meta}>현재 단계에서는 상태를 수동으로 변경할 수 없습니다.</Text>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -122,23 +106,20 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
           <Text style={styles.sectionTitle}>견적 전송</Text>
           <TextInput value={estimateAmount} onChangeText={setEstimateAmount} style={styles.input} placeholder="견적 금액" keyboardType="numeric" />
           <TextInput value={estimateNote} onChangeText={setEstimateNote} style={styles.input} placeholder="견적 메모" />
-          <Pressable style={styles.primaryButton} onPress={onSendEstimate}>
+          <Pressable
+            style={styles.primaryButton}
+            onPress={async () => {
+              const amount = Number(estimateAmount);
+              if (!amount) return;
+              await sendEstimate(item.id, amount, estimateNote);
+              setEstimateAmount('');
+              setEstimateNote('');
+            }}
+          >
             <Text style={styles.primaryButtonText}>견적 전송</Text>
           </Pressable>
         </View>
       )}
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>진행 상태</Text>
-        <StatusStepBar status={item.status} />
-        {canManuallyMove && nextStatus ? (
-          <Pressable style={styles.primaryButton} onPress={onManualNextStatus}>
-            <Text style={styles.primaryButtonText}>다음 단계로 변경 ({STATUS_LABEL[nextStatus]})</Text>
-          </Pressable>
-        ) : (
-          <Text style={styles.meta}>신규 요청~견적 수락 구간은 견적 전송/소비자 수락으로 자동 변경됩니다.</Text>
-        )}
-      </View>
 
       {canShowDueDate && (
         <View style={styles.card}>
@@ -189,7 +170,13 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
             )}
           </View>
 
-          <Pressable style={styles.primaryButton} onPress={onSaveDueDate}>
+          <Pressable
+            style={styles.primaryButton}
+            onPress={() => {
+              if (!dueDate || !dueTime) return;
+              saveCompletionDueAt(item.id, `${dueDate}T${dueTime}:00.000Z`);
+            }}
+          >
             <Text style={styles.primaryButtonText}>완료 예정 일시 저장</Text>
           </Pressable>
         </View>
@@ -211,7 +198,14 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
 
           <TextInput value={newItemTitle} onChangeText={setNewItemTitle} style={styles.input} placeholder="수리 항목 이름" />
           <TextInput value={newItemNote} onChangeText={setNewItemNote} style={styles.input} placeholder="메모 (선택)" />
-          <Pressable style={styles.secondaryButton} onPress={onAddRepairItem}>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => {
+              addRepairItem(item.id, { title: newItemTitle, note: newItemNote });
+              setNewItemTitle('');
+              setNewItemNote('');
+            }}
+          >
             <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
           </Pressable>
         </View>
@@ -226,107 +220,34 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl + spacing.md },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    padding: spacing.md,
-    gap: spacing.sm,
-    overflow: 'visible',
-  },
+  card: { backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderSoft, padding: spacing.md, gap: spacing.sm, overflow: 'visible' },
   modelTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
   meta: { fontSize: 12, color: colors.textSecondary },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  selectorButton: {
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    minHeight: 46,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-  },
+  selectorButton: { borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, minHeight: 46, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.white },
   selectorText: { color: colors.textPrimary, fontWeight: '600' },
   selectorIcon: { color: colors.textSecondary },
   layerWrapHigh: { zIndex: 40, gap: spacing.xs },
   layerWrapLow: { zIndex: 30, gap: spacing.xs },
-  pickerMenu: {
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    maxHeight: 200,
-    backgroundColor: colors.white,
-    paddingVertical: spacing.xxs,
-  },
+  pickerMenu: { borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, maxHeight: 200, backgroundColor: colors.white, paddingVertical: spacing.xxs },
   pickerOption: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, minHeight: 42, justifyContent: 'center' },
   pickerOptionActive: { backgroundColor: colors.brandSoft },
   pickerOptionText: { color: colors.textPrimary },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    backgroundColor: colors.white,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 46,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    backgroundColor: colors.white,
-  },
-  itemRowDone: {
-    borderColor: '#16A34A',
-    backgroundColor: '#ECFDF5',
-  },
+  input: { borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, backgroundColor: colors.white, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 46 },
+  itemRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: spacing.sm, backgroundColor: colors.white },
+  itemRowDone: { borderColor: '#16A34A', backgroundColor: '#ECFDF5' },
   itemTitle: { fontSize: 14, color: colors.textPrimary, fontWeight: '700' },
   itemTitleDone: { color: '#166534' },
   itemMeta: { fontSize: 12, color: colors.textSecondary },
   itemMetaDone: { color: '#15803D' },
   itemStateText: { fontSize: 12, color: colors.textSecondary, fontWeight: '700' },
   itemStateTextDone: { color: '#15803D' },
-  primaryButton: {
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    backgroundColor: colors.brand,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  secondaryButton: {
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    backgroundColor: colors.royalBlueSoft,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
+  primaryButton: { borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.brand, minHeight: 44, justifyContent: 'center' },
+  secondaryButton: { borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.royalBlueSoft, minHeight: 44, justifyContent: 'center' },
   secondaryButtonText: { color: colors.royalBlue, fontWeight: '700' },
   primaryButtonText: { color: colors.white, fontWeight: '700' },
-  quoteCard: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    padding: spacing.sm,
-    gap: spacing.xxs,
-  },
+  quoteCard: { borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, padding: spacing.sm, gap: spacing.xxs },
   quoteCardSelected: { borderColor: colors.royalBlue, backgroundColor: colors.royalBlueSoft },
-  quoteAcceptButton: {
-    marginTop: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.royalBlue,
-    borderRadius: radius.md,
-    paddingVertical: spacing.xs,
-    alignItems: 'center',
-  },
+  quoteAcceptButton: { marginTop: spacing.xs, borderWidth: 1, borderColor: colors.royalBlue, borderRadius: radius.md, paddingVertical: spacing.xs, alignItems: 'center' },
   quoteAcceptButtonText: { color: colors.royalBlue, fontWeight: '700', fontSize: 12 },
 });

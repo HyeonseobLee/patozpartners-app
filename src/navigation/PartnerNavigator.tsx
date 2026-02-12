@@ -36,7 +36,7 @@ const ReportStackScreen = () => (
 );
 
 const getTabIcon = (icon: string, color: string) => (
-  <Text style={{ fontSize: 20, color, fontWeight: '700' }} accessibilityElementsHidden>
+  <Text style={{ fontSize: 28, lineHeight: 30, color, fontWeight: '800', textAlign: 'center', includeFontPadding: false }} accessibilityElementsHidden>
     {icon}
   </Text>
 );
@@ -50,7 +50,8 @@ const PartnerNavigator = () => {
           tabBarShowLabel: false,
           tabBarActiveTintColor: colors.royalBlue,
           tabBarInactiveTintColor: colors.textSecondary,
-          tabBarStyle: { borderTopColor: colors.royalBlueSoft },
+          tabBarStyle: { borderTopColor: colors.royalBlueSoft, height: 70, paddingTop: 8, paddingBottom: 8 },
+          tabBarIconStyle: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
         }}
       >
         <Tab.Screen name="NewRequest" component={NewRequestStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('⌂', color) }} />
