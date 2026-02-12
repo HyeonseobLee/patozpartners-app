@@ -1,16 +1,16 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { ConsumerEstimateInboxApi, PartnerEstimatePayload } from '../services/consumerEstimateApi';
 
-export const STATUS_FLOW = ['NEW_REQUEST', 'ESTIMATE_REVIEW', 'INSPECTING', 'REPAIR_COMPLETED', 'PICKUP_COMPLETED'] as const;
+export const STATUS_FLOW = ['RECEIVED', 'INSPECTING', 'PARTS_PREPARING', 'REPAIRING', 'COMPLETED'] as const;
 
 export type RepairStatus = (typeof STATUS_FLOW)[number];
 
 export const STATUS_LABEL: Record<RepairStatus, string> = {
-  NEW_REQUEST: '신규 접수',
-  ESTIMATE_REVIEW: '견적서 확인 중',
+  RECEIVED: '접수 완료',
   INSPECTING: '점검 중',
-  REPAIR_COMPLETED: '수리 완료',
-  PICKUP_COMPLETED: '수령 완료',
+  PARTS_PREPARING: '부품 준비',
+  REPAIRING: '수리 중',
+  COMPLETED: '완료',
 };
 
 export type RepairItem = {
@@ -55,9 +55,9 @@ export type RepairCase = {
   repairItems: RepairItem[];
   repairChecklistReady?: boolean;
   timeline: RepairTimeline[];
-  etaText?: string;
+  expectedTimeText?: string;
+  actualTimeText?: string;
   repairCompletedAt?: string;
-  pickupCompletedAt?: string;
 };
 
 type RepairCasesContextType = {
@@ -65,7 +65,7 @@ type RepairCasesContextType = {
   setStatus: (id: string, status: RepairStatus) => boolean;
   goToNextStatus: (id: string) => void;
   goToPrevStatus: (id: string) => void;
-  saveEta: (id: string, etaText: string, options?: { checklistReady?: boolean }) => void;
+  saveEta: (id: string, expectedTimeText: string, options?: { actualTimeText?: string; checklistReady?: boolean }) => void;
   toggleRepairItem: (id: string, itemId: string) => void;
   sendEstimate: (id: string, amount: number, note: string, options?: { additional?: boolean }) => Promise<void>;
   confirmEstimateByConsumer: (id: string, estimateId: string) => void;
@@ -83,17 +83,8 @@ const createTimeline = (status: RepairStatus, repairItems: RepairItem[]): Repair
   completedRepairItems: repairItems.filter((item) => item.done).map((item) => item.title),
 });
 
-const hasConfirmedEstimate = (repairCase: RepairCase) => repairCase.estimates.some((estimate) => estimate.consumerConfirmed);
-
-const canMoveToStatus = (repairCase: RepairCase, status: RepairStatus) => {
-  if (status === 'INSPECTING' && !hasConfirmedEstimate(repairCase)) {
-    return false;
-  }
-  return true;
-};
-
 const withStatusTransition = (repairCase: RepairCase, status: RepairStatus): RepairCase => {
-  if (!canMoveToStatus(repairCase, status) || repairCase.status === status) {
+  if (repairCase.status === status) {
     return repairCase;
   }
 
@@ -103,12 +94,8 @@ const withStatusTransition = (repairCase: RepairCase, status: RepairStatus): Rep
     timeline: [...repairCase.timeline, createTimeline(status, repairCase.repairItems)],
   };
 
-  if (status === 'REPAIR_COMPLETED' && !repairCase.repairCompletedAt) {
+  if (status === 'COMPLETED' && !repairCase.repairCompletedAt) {
     nextCase.repairCompletedAt = nowIso();
-  }
-
-  if (status === 'PICKUP_COMPLETED' && !repairCase.pickupCompletedAt) {
-    nextCase.pickupCompletedAt = nowIso();
   }
 
   return nextCase;
@@ -131,10 +118,10 @@ const initialCases: RepairCase[] = [
     serialNumber: 'RBP3-2391-AX',
     intakeNumber: 'IN-2026-0001',
     intakeAt: '2026-02-11T09:10:00.000Z',
-    status: 'NEW_REQUEST',
+    status: 'RECEIVED',
     estimates: [],
     repairItems: defaultChecklist,
-    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-11T09:10:00.000Z', completedRepairItems: [] }],
+    timeline: [{ status: 'RECEIVED', statusLabel: STATUS_LABEL.RECEIVED, updatedAt: '2026-02-11T09:10:00.000Z', completedRepairItems: [] }],
   },
   {
     id: 'RC-1002',
@@ -145,34 +132,42 @@ const initialCases: RepairCase[] = [
     deviceModel: 'Urban E-Bike M2',
     serialNumber: 'UEM2-7710-QP',
     intakeNumber: 'IN-2026-0002',
-    intakeAt: '2026-02-11T10:25:00.000Z',
-    status: 'ESTIMATE_REVIEW',
+    intakeAt: '2026-02-11T10:10:00.000Z',
+    status: 'PARTS_PREPARING',
     estimates: [
       {
         id: 'EST-2026-10021',
-        amount: 98000,
-        note: '배터리 밸런싱 + 브레이크 패드 교체',
-        sentAt: '2026-02-11T11:05:00.000Z',
+        amount: 180000,
+        note: '배터리 셀 밸런싱 + 브레이크 패드 교체',
+        sentAt: '2026-02-11T10:20:00.000Z',
+        consumerConfirmed: true,
+        consumerConfirmedAt: '2026-02-11T10:40:00.000Z',
       },
     ],
-    repairItems: defaultChecklist,
+    selectedEstimateId: 'EST-2026-10021',
+    repairChecklistReady: true,
+    repairItems: [
+      { id: 'CHECK-1', title: '브레이크/제동 상태 점검', done: true, completedAt: '2026-02-11T11:05:00.000Z' },
+      { id: 'CHECK-2', title: '배터리 및 전장 상태 점검', done: true, completedAt: '2026-02-11T11:12:00.000Z' },
+      { id: 'CHECK-3', title: '구동계/체인 장력 점검', done: false },
+    ],
     timeline: [
-      { status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-11T10:25:00.000Z', completedRepairItems: [] },
-      { status: 'ESTIMATE_REVIEW', statusLabel: STATUS_LABEL.ESTIMATE_REVIEW, updatedAt: '2026-02-11T10:40:00.000Z', completedRepairItems: [] },
+      { status: 'RECEIVED', statusLabel: STATUS_LABEL.RECEIVED, updatedAt: '2026-02-11T10:10:00.000Z', completedRepairItems: [] },
+      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-11T10:40:00.000Z', completedRepairItems: [] },
+      { status: 'PARTS_PREPARING', statusLabel: STATUS_LABEL.PARTS_PREPARING, updatedAt: '2026-02-11T11:20:00.000Z', completedRepairItems: ['브레이크/제동 상태 점검'] },
     ],
   },
   {
     id: 'RC-1003',
-    customerName: '이서연',
-    customerLocation: '마포구 상암동',
-    requestNote: '체인 소음 및 뒷바퀴 흔들림',
-    aiDiagnosis: '체인 장력 저하 및 브레이크 패드 마모',
-    rating: 4.7,
+    customerName: '이지은',
+    customerLocation: '마포구 서교동',
+    requestNote: '체인 소음 및 제동력 저하',
+    aiDiagnosis: '체인 장력 불균형 + 브레이크 패드 마모',
     deviceModel: 'City Fold Mini',
     serialNumber: 'CFM-3221-KK',
     intakeNumber: 'IN-2026-0003',
     intakeAt: '2026-02-10T16:45:00.000Z',
-    status: 'INSPECTING',
+    status: 'REPAIRING',
     estimates: [
       {
         id: 'EST-2026-10031',
@@ -191,9 +186,10 @@ const initialCases: RepairCase[] = [
       { id: 'CHECK-3', title: '구동계/체인 장력 점검', done: false },
     ],
     timeline: [
-      { status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-10T16:45:00.000Z', completedRepairItems: [] },
-      { status: 'ESTIMATE_REVIEW', statusLabel: STATUS_LABEL.ESTIMATE_REVIEW, updatedAt: '2026-02-10T17:20:00.000Z', completedRepairItems: [] },
+      { status: 'RECEIVED', statusLabel: STATUS_LABEL.RECEIVED, updatedAt: '2026-02-10T16:45:00.000Z', completedRepairItems: [] },
       { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-10T19:10:00.000Z', completedRepairItems: [] },
+      { status: 'PARTS_PREPARING', statusLabel: STATUS_LABEL.PARTS_PREPARING, updatedAt: '2026-02-11T07:30:00.000Z', completedRepairItems: [] },
+      { status: 'REPAIRING', statusLabel: STATUS_LABEL.REPAIRING, updatedAt: '2026-02-11T08:40:00.000Z', completedRepairItems: ['브레이크/제동 상태 점검'] },
     ],
   },
 ];
@@ -240,11 +236,12 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     );
   };
 
-  const saveEta = (id: string, etaText: string, options?: { checklistReady?: boolean }) => {
+  const saveEta = (id: string, expectedTimeText: string, options?: { actualTimeText?: string; checklistReady?: boolean }) => {
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
-        etaText,
+        expectedTimeText,
+        actualTimeText: options?.actualTimeText ?? item.actualTimeText,
         repairChecklistReady: options?.checklistReady ?? item.repairChecklistReady,
       })),
     );
@@ -290,44 +287,33 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     await ConsumerEstimateInboxApi.pushEstimate(payload);
 
     setCases((prev) =>
-      updateCase(prev, id, (item) => {
-        const nextItem = item.status === 'NEW_REQUEST' ? withStatusTransition(item, 'ESTIMATE_REVIEW') : item;
-        return {
-          ...nextItem,
-          estimates: [
-            {
-              id: estimateId,
-              amount,
-              note,
-              sentAt: payload.sentAt,
-              additional: options?.additional,
-            },
-            ...nextItem.estimates,
-          ],
-        };
-      }),
+      updateCase(prev, id, (item) => ({
+        ...item,
+        estimates: [
+          {
+            id: estimateId,
+            amount,
+            note,
+            sentAt: payload.sentAt,
+            additional: options?.additional,
+          },
+          ...item.estimates,
+        ],
+      })),
     );
   };
 
   const confirmEstimateByConsumer = (id: string, estimateId: string) => {
     setCases((prev) =>
-      updateCase(prev, id, (item) => {
-        const withConfirmedEstimate = {
-          ...item,
-          selectedEstimateId: estimateId,
-          estimates: item.estimates.map((estimate) => ({
-            ...estimate,
-            consumerConfirmed: estimate.id === estimateId,
-            consumerConfirmedAt: estimate.id === estimateId ? nowIso() : estimate.consumerConfirmedAt,
-          })),
-        };
-
-        if (withConfirmedEstimate.status === 'ESTIMATE_REVIEW') {
-          return withStatusTransition(withConfirmedEstimate, 'INSPECTING');
-        }
-
-        return withConfirmedEstimate;
-      }),
+      updateCase(prev, id, (item) => ({
+        ...item,
+        selectedEstimateId: estimateId,
+        estimates: item.estimates.map((estimate) => ({
+          ...estimate,
+          consumerConfirmed: estimate.id === estimateId,
+          consumerConfirmedAt: estimate.id === estimateId ? nowIso() : estimate.consumerConfirmedAt,
+        })),
+      })),
     );
   };
 

@@ -20,7 +20,7 @@ export const ReportScreen = () => {
 
   const metrics = useMemo(() => {
     const rangeCases = cases.filter((item) => isInRange(item.intakeAt, range));
-    const finished = rangeCases.filter((item) => item.status === 'PICKUP_COMPLETED');
+    const finished = rangeCases.filter((item) => item.status === 'COMPLETED');
     const revenue = finished.reduce((sum, item) => {
       const confirmedEstimate = item.estimates.find((estimate) => estimate.consumerConfirmed);
       return sum + (confirmedEstimate?.amount ?? 0);
