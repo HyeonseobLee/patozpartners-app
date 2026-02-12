@@ -21,7 +21,7 @@ export const RepairHomeScreen = ({ navigation }: Props) => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>수리 관리</Text>
       <Pressable style={styles.toggleButton} onPress={() => setShowPickupDone((prev) => !prev)}>
-        <Text style={styles.toggleButtonText}>수령 완료 기기 {showPickupDone ? '숨기기' : '보기'}</Text>
+        <Text style={styles.toggleButtonText}>수령 완료 기기 {showPickupDone ? '숨김' : '표시'}</Text>
       </Pressable>
 
       {visibleCases.map((item) => (

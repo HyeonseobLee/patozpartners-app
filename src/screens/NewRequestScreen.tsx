@@ -56,7 +56,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
-    zIndex: 1,
+    position: 'relative',
+    zIndex: 10,
+    elevation: 3,
   },
   title: {
     color: colors.royalBlue,
@@ -77,6 +79,7 @@ const styles = StyleSheet.create({
   listContent: {
     gap: spacing.sm,
     paddingBottom: spacing.lg,
+    paddingTop: spacing.xs,
   },
   card: {
     backgroundColor: colors.white,
