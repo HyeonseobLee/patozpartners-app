@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
-export const STATUS_FLOW = ['NEW_REQUEST', 'ESTIMATE_PENDING', 'ESTIMATE_ACCEPTED', 'INTAKE_COMPLETED', 'IN_REPAIR', 'REPAIR_COMPLETED', 'RECEIVED_COMPLETED'] as const;
+export const STATUS_FLOW = ['NEW_REQUEST', 'ESTIMATE_PENDING', 'ESTIMATE_ACCEPTED', 'INTAKE_COMPLETED', 'IN_REPAIR', 'REPAIR_COMPLETED', 'SHIPMENT_COMPLETED'] as const;
 export type RepairStatus = (typeof STATUS_FLOW)[number];
 
 export const STATUS_LABEL: Record<RepairStatus, string> = {
@@ -10,10 +10,10 @@ export const STATUS_LABEL: Record<RepairStatus, string> = {
   INTAKE_COMPLETED: '입고 완료',
   IN_REPAIR: '수리 중',
   REPAIR_COMPLETED: '수리 완료',
-  RECEIVED_COMPLETED: '수령 완료',
+  SHIPMENT_COMPLETED: '출고 완료',
 };
 
-export const MANUAL_STATUS_START_INDEX = STATUS_FLOW.indexOf('INTAKE_COMPLETED');
+export const MANUAL_STATUS_START_INDEX = STATUS_FLOW.indexOf('ESTIMATE_ACCEPTED');
 
 export type RepairItem = {
   id: string;
@@ -181,6 +181,66 @@ const initialCases: RepairCase[] = [
         completedRepairItems: ['브레이크/제동 상태 점검'],
       },
     ],
+  },
+  {
+    id: 'RC-2001',
+    customerName: '최도윤',
+    customerPhone: '010-1111-2201',
+    customerLocation: '강서구 화곡동',
+    requestNote: 'AI 진단: 배터리 방전',
+    deviceModel: 'Patoz Urban X1',
+    serialNumber: 'PZ-001',
+    intakeNumber: 'IN-2026-0101',
+    intakeAt: '2026-02-12T08:10:00.000Z',
+    status: 'NEW_REQUEST',
+    estimates: [],
+    repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T08:10:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2002', customerName: '오세린', customerPhone: '010-1111-2202', customerLocation: '양천구 신정동',
+    requestNote: 'AI 진단: 브레이크 소음', deviceModel: 'Patoz Cargo Z2', serialNumber: 'PZ-002', intakeNumber: 'IN-2026-0102', intakeAt: '2026-02-12T08:25:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T08:25:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2003', customerName: '유나경', customerPhone: '010-1111-2203', customerLocation: '관악구 봉천동',
+    requestNote: 'AI 진단: 타이어 펑크', deviceModel: 'Patoz Fold F9', serialNumber: 'PZ-003', intakeNumber: 'IN-2026-0103', intakeAt: '2026-02-12T08:40:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T08:40:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2004', customerName: '장현우', customerPhone: '010-1111-2204', customerLocation: '성동구 성수동',
+    requestNote: 'AI 진단: 모터 출력 저하', deviceModel: 'Patoz Trail T4', serialNumber: 'PZ-004', intakeNumber: 'IN-2026-0104', intakeAt: '2026-02-12T09:00:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T09:00:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2005', customerName: '한소율', customerPhone: '010-1111-2205', customerLocation: '광진구 자양동',
+    requestNote: 'AI 진단: 핸들 유격 발생', deviceModel: 'Patoz Commuter C3', serialNumber: 'PZ-005', intakeNumber: 'IN-2026-0105', intakeAt: '2026-02-12T09:12:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T09:12:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2006', customerName: '임지후', customerPhone: '010-1111-2206', customerLocation: '동작구 사당동',
+    requestNote: 'AI 진단: 변속 불량', deviceModel: 'Patoz City M5', serialNumber: 'PZ-006', intakeNumber: 'IN-2026-0106', intakeAt: '2026-02-12T09:25:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T09:25:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2007', customerName: '정가은', customerPhone: '010-1111-2207', customerLocation: '은평구 불광동',
+    requestNote: 'AI 진단: 체인 이탈 반복', deviceModel: 'Patoz Hybrid H1', serialNumber: 'PZ-007', intakeNumber: 'IN-2026-0107', intakeAt: '2026-02-12T09:40:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T09:40:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2008', customerName: '서민재', customerPhone: '010-1111-2208', customerLocation: '중랑구 면목동',
+    requestNote: 'AI 진단: 충전 단자 손상', deviceModel: 'Patoz Mini V2', serialNumber: 'PZ-008', intakeNumber: 'IN-2026-0108', intakeAt: '2026-02-12T09:55:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T09:55:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2009', customerName: '배하린', customerPhone: '010-1111-2209', customerLocation: '서초구 반포동',
+    requestNote: 'AI 진단: 디스플레이 점멸', deviceModel: 'Patoz Trek R7', serialNumber: 'PZ-009', intakeNumber: 'IN-2026-0109', intakeAt: '2026-02-12T10:10:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T10:10:00.000Z', completedRepairItems: [] }],
+  },
+  {
+    id: 'RC-2010', customerName: '문태오', customerPhone: '010-1111-2210', customerLocation: '노원구 중계동',
+    requestNote: 'AI 진단: 서스펜션 누유 의심', deviceModel: 'Patoz MTB K8', serialNumber: 'PZ-010', intakeNumber: 'IN-2026-0110', intakeAt: '2026-02-12T10:25:00.000Z', status: 'NEW_REQUEST', estimates: [], repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-12T10:25:00.000Z', completedRepairItems: [] }],
   },
 ];
 

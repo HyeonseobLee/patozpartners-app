@@ -10,7 +10,7 @@ const getTone = (status: RepairStatus) => {
   if (status === 'ESTIMATE_ACCEPTED') {
     return { bg: '#DBEAFE', text: '#1D4ED8' };
   }
-  if (status === 'RECEIVED_COMPLETED') {
+  if (status === 'SHIPMENT_COMPLETED') {
     return { bg: '#ECFDF5', text: colors.success };
   }
   return { bg: colors.brandSoft, text: colors.brand };

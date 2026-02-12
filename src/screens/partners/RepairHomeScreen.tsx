@@ -85,7 +85,7 @@ const statusTone: Record<RepairStatus, { color: string }> = {
   INTAKE_COMPLETED: { color: '#7C3AED' },
   IN_REPAIR: { color: '#0F766E' },
   REPAIR_COMPLETED: { color: '#1D4ED8' },
-  RECEIVED_COMPLETED: { color: '#166534' },
+  SHIPMENT_COMPLETED: { color: '#166534' },
 };
 
 const styles = StyleSheet.create({
