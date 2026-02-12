@@ -70,6 +70,10 @@ export const RepairHomeScreen = ({ navigation }: Props) => {
               <Text style={styles.meta}>접수번호: {item.intakeNumber}</Text>
               <Text style={styles.meta}>고객명: {item.customerName ?? '미입력'}</Text>
               <Text style={styles.meta}>연락처: {item.customerPhone ?? '미입력'}</Text>
+              <View style={styles.issueBox}>
+                <Text style={styles.issueTitle}>고장 내역</Text>
+                <Text style={styles.issueText}>{item.requestNote ?? '소비자 고장 내역이 없습니다.'}</Text>
+              </View>
             </View>
             <Text style={[styles.statusText, statusTone[item.status]]}>{STATUS_LABEL[item.status]}</Text>
           </Pressable>
@@ -144,6 +148,16 @@ const styles = StyleSheet.create({
   },
   model: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   meta: { color: colors.textSecondary, fontSize: 12 },
+  issueBox: {
+    marginTop: spacing.xs,
+    backgroundColor: '#F3F4F6',
+    borderRadius: radius.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    gap: spacing.xxs,
+  },
+  issueTitle: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
+  issueText: { fontSize: 12, lineHeight: 16, color: colors.textPrimary },
   statusText: { fontWeight: '800', fontSize: 13 },
   emptyText: { textAlign: 'center', marginTop: spacing.md, color: colors.textSecondary },
 });
