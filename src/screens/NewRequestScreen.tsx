@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing } from '../styles/theme';
 
 type RepairRequest = {
@@ -16,9 +16,19 @@ const repairRequests: RepairRequest[] = [
 ];
 
 const NewRequestScreen = () => {
+  const onPressCreate = () => {
+    Alert.alert('신규 요청', '신규 요청 작성 화면으로 이동합니다.');
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>신규 수리 접수</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>신규 수리 접수</Text>
+        <Pressable onPress={onPressCreate} style={styles.actionButton} hitSlop={8}>
+          <Text style={styles.actionButtonText}>신규 요청 등록</Text>
+        </Pressable>
+      </View>
+
       <FlatList
         data={repairRequests}
         keyExtractor={(item) => item.id}
@@ -41,14 +51,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     padding: spacing.md,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    zIndex: 1,
+  },
   title: {
     color: colors.royalBlue,
     fontSize: 20,
     fontWeight: '700',
-    marginBottom: spacing.sm,
+  },
+  actionButton: {
+    backgroundColor: colors.brand,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  actionButtonText: {
+    color: colors.white,
+    fontWeight: '700',
+    fontSize: 12,
   },
   listContent: {
     gap: spacing.sm,
+    paddingBottom: spacing.lg,
   },
   card: {
     backgroundColor: colors.white,

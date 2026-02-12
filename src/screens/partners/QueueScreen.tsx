@@ -8,7 +8,7 @@ import { StatusBadge } from '../../components/partners/StatusBadge';
 
 type Props = NativeStackScreenProps<QueueStackParamList, 'QueueHome'>;
 
-const FILTERS = ['전체', '접수 완료', '점검 중', '부품 준비', '수리 진행 중', '수리 완료/수령 완료'] as const;
+const FILTERS = ['전체', '신규 접수', '견적서 확인 중', '점검 중', '수리 완료', '수령 완료'] as const;
 type Filter = (typeof FILTERS)[number];
 
 export const QueueScreen = ({ navigation }: Props) => {
@@ -34,8 +34,8 @@ export const QueueScreen = ({ navigation }: Props) => {
           .includes(normalized);
       })
       .sort((a, b) => {
-        const aDone = a.status === 'FINISHED' ? 1 : 0;
-        const bDone = b.status === 'FINISHED' ? 1 : 0;
+        const aDone = a.status === 'PICKUP_COMPLETED' ? 1 : 0;
+        const bDone = b.status === 'PICKUP_COMPLETED' ? 1 : 0;
         if (aDone !== bDone) return aDone - bDone;
         return +new Date(b.intakeAt) - +new Date(a.intakeAt);
       });

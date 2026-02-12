@@ -1,36 +1,24 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { ConsumerEstimateInboxApi, PartnerEstimatePayload } from '../services/consumerEstimateApi';
 
-export const STATUS_FLOW = ['REGISTERED', 'INSPECTING', 'PARTS_PENDING', 'REPAIRING', 'FINISHED'] as const;
+export const STATUS_FLOW = ['NEW_REQUEST', 'ESTIMATE_REVIEW', 'INSPECTING', 'REPAIR_COMPLETED', 'PICKUP_COMPLETED'] as const;
 
 export type RepairStatus = (typeof STATUS_FLOW)[number];
 
 export const STATUS_LABEL: Record<RepairStatus, string> = {
-  REGISTERED: '접수 완료',
+  NEW_REQUEST: '신규 접수',
+  ESTIMATE_REVIEW: '견적서 확인 중',
   INSPECTING: '점검 중',
-  PARTS_PENDING: '부품 준비',
-  REPAIRING: '수리 진행 중',
-  FINISHED: '수령 완료',
+  REPAIR_COMPLETED: '수리 완료',
+  PICKUP_COMPLETED: '수령 완료',
 };
 
 export type RepairItem = {
   id: string;
   title: string;
   note?: string;
-  expectedHours?: number;
-  actualHours?: number;
   done: boolean;
   completedAt?: string;
-};
-
-export type Inspection = {
-  brake: boolean;
-  tire: boolean;
-  battery: boolean;
-  drivetrain: boolean;
-  other: boolean;
-  otherText?: string;
-  memo?: string;
 };
 
 export type Estimate = {
@@ -62,10 +50,10 @@ export type RepairCase = {
   intakeNumber: string;
   intakeAt: string;
   status: RepairStatus;
-  inspection?: Inspection;
   estimates: Estimate[];
   selectedEstimateId?: string;
   repairItems: RepairItem[];
+  repairChecklistReady?: boolean;
   timeline: RepairTimeline[];
   etaText?: string;
   repairCompletedAt?: string;
@@ -77,9 +65,7 @@ type RepairCasesContextType = {
   setStatus: (id: string, status: RepairStatus) => boolean;
   goToNextStatus: (id: string) => void;
   goToPrevStatus: (id: string) => void;
-  saveInspection: (id: string, payload: Inspection) => void;
-  addRepairItem: (id: string, item: Omit<RepairItem, 'id'>) => void;
-  saveEta: (id: string, etaText: string) => void;
+  saveEta: (id: string, etaText: string, options?: { checklistReady?: boolean }) => void;
   toggleRepairItem: (id: string, itemId: string) => void;
   sendEstimate: (id: string, amount: number, note: string, options?: { additional?: boolean }) => Promise<void>;
   confirmEstimateByConsumer: (id: string, estimateId: string) => void;
@@ -97,18 +83,17 @@ const createTimeline = (status: RepairStatus, repairItems: RepairItem[]): Repair
   completedRepairItems: repairItems.filter((item) => item.done).map((item) => item.title),
 });
 
-const hasConfirmedEstimate = (repairCase: RepairCase) =>
-  repairCase.estimates.some((estimate) => estimate.consumerConfirmed);
+const hasConfirmedEstimate = (repairCase: RepairCase) => repairCase.estimates.some((estimate) => estimate.consumerConfirmed);
 
 const canMoveToStatus = (repairCase: RepairCase, status: RepairStatus) => {
-  if (status === 'PARTS_PENDING' && !hasConfirmedEstimate(repairCase)) {
+  if (status === 'INSPECTING' && !hasConfirmedEstimate(repairCase)) {
     return false;
   }
   return true;
 };
 
 const withStatusTransition = (repairCase: RepairCase, status: RepairStatus): RepairCase => {
-  if (!canMoveToStatus(repairCase, status)) {
+  if (!canMoveToStatus(repairCase, status) || repairCase.status === status) {
     return repairCase;
   }
 
@@ -118,14 +103,22 @@ const withStatusTransition = (repairCase: RepairCase, status: RepairStatus): Rep
     timeline: [...repairCase.timeline, createTimeline(status, repairCase.repairItems)],
   };
 
-  if (status === 'FINISHED' && !repairCase.repairCompletedAt) {
-    const completedAt = nowIso();
-    nextCase.repairCompletedAt = completedAt;
-    nextCase.pickupCompletedAt = completedAt;
+  if (status === 'REPAIR_COMPLETED' && !repairCase.repairCompletedAt) {
+    nextCase.repairCompletedAt = nowIso();
+  }
+
+  if (status === 'PICKUP_COMPLETED' && !repairCase.pickupCompletedAt) {
+    nextCase.pickupCompletedAt = nowIso();
   }
 
   return nextCase;
 };
+
+const defaultChecklist = [
+  { id: 'CHECK-1', title: '브레이크/제동 상태 점검', note: '패드 마모 및 유압 라인 확인', done: false },
+  { id: 'CHECK-2', title: '배터리 및 전장 상태 점검', note: '충전 사이클/셀 밸런스 확인', done: false },
+  { id: 'CHECK-3', title: '구동계/체인 장력 점검', note: '체인/스프라켓 소음 여부 확인', done: false },
+];
 
 const initialCases: RepairCase[] = [
   {
@@ -138,10 +131,10 @@ const initialCases: RepairCase[] = [
     serialNumber: 'RBP3-2391-AX',
     intakeNumber: 'IN-2026-0001',
     intakeAt: '2026-02-11T09:10:00.000Z',
-    status: 'REGISTERED',
+    status: 'NEW_REQUEST',
     estimates: [],
-    repairItems: [],
-    timeline: [{ status: 'REGISTERED', statusLabel: STATUS_LABEL.REGISTERED, updatedAt: '2026-02-11T09:10:00.000Z', completedRepairItems: [] }],
+    repairItems: defaultChecklist,
+    timeline: [{ status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-11T09:10:00.000Z', completedRepairItems: [] }],
   },
   {
     id: 'RC-1002',
@@ -153,15 +146,7 @@ const initialCases: RepairCase[] = [
     serialNumber: 'UEM2-7710-QP',
     intakeNumber: 'IN-2026-0002',
     intakeAt: '2026-02-11T10:25:00.000Z',
-    status: 'INSPECTING',
-    inspection: {
-      brake: true,
-      tire: false,
-      battery: true,
-      drivetrain: true,
-      other: false,
-      memo: '배터리 잔량 저하 이슈 확인 필요',
-    },
+    status: 'ESTIMATE_REVIEW',
     estimates: [
       {
         id: 'EST-2026-10021',
@@ -170,10 +155,10 @@ const initialCases: RepairCase[] = [
         sentAt: '2026-02-11T11:05:00.000Z',
       },
     ],
-    repairItems: [],
+    repairItems: defaultChecklist,
     timeline: [
-      { status: 'REGISTERED', statusLabel: STATUS_LABEL.REGISTERED, updatedAt: '2026-02-11T10:25:00.000Z', completedRepairItems: [] },
-      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-11T10:40:00.000Z', completedRepairItems: [] },
+      { status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-11T10:25:00.000Z', completedRepairItems: [] },
+      { status: 'ESTIMATE_REVIEW', statusLabel: STATUS_LABEL.ESTIMATE_REVIEW, updatedAt: '2026-02-11T10:40:00.000Z', completedRepairItems: [] },
     ],
   },
   {
@@ -187,7 +172,7 @@ const initialCases: RepairCase[] = [
     serialNumber: 'CFM-3221-KK',
     intakeNumber: 'IN-2026-0003',
     intakeAt: '2026-02-10T16:45:00.000Z',
-    status: 'REPAIRING',
+    status: 'INSPECTING',
     estimates: [
       {
         id: 'EST-2026-10031',
@@ -199,27 +184,16 @@ const initialCases: RepairCase[] = [
       },
     ],
     selectedEstimateId: 'EST-2026-10031',
+    repairChecklistReady: true,
     repairItems: [
-      {
-        id: 'ITEM-1',
-        title: '브레이크 패드 교체',
-        note: '앞바퀴 패드 마모 심함',
-        expectedHours: 1,
-        done: true,
-        completedAt: '2026-02-11T07:45:00.000Z',
-      },
-      {
-        id: 'ITEM-2',
-        title: '체인 장력 조정',
-        expectedHours: 0.5,
-        done: false,
-      },
+      { id: 'CHECK-1', title: '브레이크/제동 상태 점검', note: '앞바퀴 패드 마모 확인', done: true, completedAt: '2026-02-11T07:45:00.000Z' },
+      { id: 'CHECK-2', title: '배터리 및 전장 상태 점검', done: false },
+      { id: 'CHECK-3', title: '구동계/체인 장력 점검', done: false },
     ],
     timeline: [
-      { status: 'REGISTERED', statusLabel: STATUS_LABEL.REGISTERED, updatedAt: '2026-02-10T16:45:00.000Z', completedRepairItems: [] },
-      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-10T17:20:00.000Z', completedRepairItems: [] },
-      { status: 'PARTS_PENDING', statusLabel: STATUS_LABEL.PARTS_PENDING, updatedAt: '2026-02-10T18:15:00.000Z', completedRepairItems: [] },
-      { status: 'REPAIRING', statusLabel: STATUS_LABEL.REPAIRING, updatedAt: '2026-02-10T19:10:00.000Z', completedRepairItems: [] },
+      { status: 'NEW_REQUEST', statusLabel: STATUS_LABEL.NEW_REQUEST, updatedAt: '2026-02-10T16:45:00.000Z', completedRepairItems: [] },
+      { status: 'ESTIMATE_REVIEW', statusLabel: STATUS_LABEL.ESTIMATE_REVIEW, updatedAt: '2026-02-10T17:20:00.000Z', completedRepairItems: [] },
+      { status: 'INSPECTING', statusLabel: STATUS_LABEL.INSPECTING, updatedAt: '2026-02-10T19:10:00.000Z', completedRepairItems: [] },
     ],
   },
 ];
@@ -266,27 +240,14 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     );
   };
 
-  const saveInspection = (id: string, payload: Inspection) => {
+  const saveEta = (id: string, etaText: string, options?: { checklistReady?: boolean }) => {
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
-        inspection: payload,
-        status: item.status === 'REGISTERED' ? 'INSPECTING' : item.status,
+        etaText,
+        repairChecklistReady: options?.checklistReady ?? item.repairChecklistReady,
       })),
     );
-  };
-
-  const addRepairItem = (id: string, payload: Omit<RepairItem, 'id'>) => {
-    setCases((prev) =>
-      updateCase(prev, id, (item) => ({
-        ...item,
-        repairItems: [...item.repairItems, { ...payload, id: `${id}-I-${Date.now()}` }],
-      })),
-    );
-  };
-
-  const saveEta = (id: string, etaText: string) => {
-    setCases((prev) => updateCase(prev, id, (item) => ({ ...item, etaText })));
   };
 
   const toggleRepairItem = (id: string, itemId: string) => {
@@ -331,6 +292,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
+        status: item.status === 'NEW_REQUEST' ? 'ESTIMATE_REVIEW' : item.status,
         estimates: [
           {
             id: estimateId,
@@ -367,8 +329,6 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       setStatus,
       goToNextStatus,
       goToPrevStatus,
-      saveInspection,
-      addRepairItem,
       saveEta,
       toggleRepairItem,
       sendEstimate,
