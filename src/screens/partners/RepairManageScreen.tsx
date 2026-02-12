@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
 import { RepairStatus, STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
@@ -9,20 +9,6 @@ import { StatusStepBar } from '../../components/partners/StatusStepBar';
 
 type Props = NativeStackScreenProps<RepairStackParamList, 'RepairManageDetail'>;
 
-const buildDateOptions = () => {
-  const now = new Date();
-  return Array.from({ length: 7 }, (_, idx) => {
-    const date = new Date(now);
-    date.setDate(now.getDate() + idx);
-    return {
-      value: date.toISOString().slice(0, 10),
-      label: `${date.getMonth() + 1}/${date.getDate()} (${['일', '월', '화', '수', '목', '금', '토'][date.getDay()]})`,
-    };
-  });
-};
-
-const TIME_OPTIONS = ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'];
-
 export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const { caseId } = route.params;
   const { findCase, saveEta, toggleRepairItem, setStatus, sendEstimate, confirmEstimateByConsumer } = useRepairCases();
@@ -30,17 +16,10 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
 
   const [estimateAmount, setEstimateAmount] = useState('');
   const [estimateNote, setEstimateNote] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [expectedTimeText, setExpectedTimeText] = useState(item?.expectedTimeText ?? '');
+  const [actualTimeText, setActualTimeText] = useState(item?.actualTimeText ?? '');
 
-  const dateOptions = useMemo(() => buildDateOptions(), []);
-  const [etaDate, setEtaDate] = useState(dateOptions[0]?.value ?? '');
-  const [etaTime, setEtaTime] = useState(TIME_OPTIONS[0]);
-
-  const confirmedEstimate = useMemo(
-    () => item?.estimates.find((estimate) => estimate.consumerConfirmed),
-    [item?.estimates],
-  );
+  const confirmedEstimate = useMemo(() => item?.estimates.find((estimate) => estimate.consumerConfirmed), [item?.estimates]);
 
   if (!item) {
     return (
@@ -50,40 +29,24 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
     );
   }
 
-  const onCompleteEtaInput = () => {
-    const etaText = `${etaDate} ${etaTime}`;
-    saveEta(item.id, etaText, { checklistReady: true });
-    Alert.alert('입력 완료', '완료 예정 일시가 저장되었고 수리 항목 영역이 활성화되었습니다.');
+  const onSaveTimes = () => {
+    saveEta(item.id, expectedTimeText, { actualTimeText, checklistReady: true });
   };
 
-  const onSendEstimate = async (additional = false) => {
+  const onSendEstimate = async () => {
     const amount = Number(estimateAmount);
     if (!amount) return;
-    await sendEstimate(item.id, amount, estimateNote, { additional });
+    await sendEstimate(item.id, amount, estimateNote);
     setEstimateAmount('');
     setEstimateNote('');
-    Alert.alert('견적 전송', additional ? '추가 견적이 고객에게 전달되었습니다.' : '견적이 고객에게 전달되었습니다.');
   };
 
   const onSelectStatus = (status: RepairStatus) => {
     if (status === item.status) return;
-
-    Alert.alert('상태 변경', `상태를 ${STATUS_LABEL[status]}로 변경하시겠습니까?`, [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '확인',
-        style: 'default',
-        onPress: () => {
-          const updated = setStatus(item.id, status);
-          if (!updated && status === 'INSPECTING') {
-            Alert.alert('견적 확정 필요', '소비자가 견적을 수락한 뒤에만 점검 중 단계로 이동할 수 있습니다.');
-          }
-        },
-      },
-    ]);
+    setStatus(item.id, status);
   };
 
-  const canShowRepairItems = item.status === 'INSPECTING' || item.status === 'REPAIR_COMPLETED' || item.status === 'PICKUP_COMPLETED' || !!item.repairChecklistReady;
+  const canShowRepairItems = item.status !== 'RECEIVED' || !!item.repairChecklistReady;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -95,8 +58,12 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>진행 단계 및 상태 변경</Text>
+        <Text style={styles.sectionTitle}>진행 단계</Text>
         <StatusStepBar status={item.status} />
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>상태 변경</Text>
         <View style={styles.statusWrap}>
           {STATUS_FLOW.map((status) => {
             const selected = status === item.status;
@@ -110,54 +77,22 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>완료 예정 일시</Text>
-
-        <Pressable style={styles.pickerBox} onPress={() => setShowDatePicker((prev) => !prev)}>
-          <Text style={styles.pickerLabel}>날짜 선택</Text>
-          <Text style={styles.pickerValue}>{dateOptions.find((option) => option.value === etaDate)?.label ?? '날짜를 선택하세요'}</Text>
+        <Text style={styles.sectionTitle}>예상/실제 시간</Text>
+        <TextInput
+          value={expectedTimeText}
+          onChangeText={setExpectedTimeText}
+          style={styles.input}
+          placeholder="예상 시간 (예: 2026-02-12 15:00)"
+        />
+        <TextInput
+          value={actualTimeText}
+          onChangeText={setActualTimeText}
+          style={styles.input}
+          placeholder="실제 시간 (예: 2026-02-12 16:20)"
+        />
+        <Pressable style={styles.primaryButton} onPress={onSaveTimes}>
+          <Text style={styles.primaryButtonText}>저장</Text>
         </Pressable>
-        {showDatePicker && (
-          <View style={styles.dropdownList}>
-            {dateOptions.map((option) => (
-              <Pressable
-                key={option.value}
-                style={[styles.dropdownItem, etaDate === option.value && styles.dropdownItemActive]}
-                onPress={() => {
-                  setEtaDate(option.value);
-                  setShowDatePicker(false);
-                }}
-              >
-                <Text style={styles.dropdownText}>{option.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
-        <Pressable style={styles.pickerBox} onPress={() => setShowTimePicker((prev) => !prev)}>
-          <Text style={styles.pickerLabel}>시간 선택</Text>
-          <Text style={styles.pickerValue}>{etaTime}</Text>
-        </Pressable>
-        {showTimePicker && (
-          <View style={styles.dropdownList}>
-            {TIME_OPTIONS.map((option) => (
-              <Pressable
-                key={option}
-                style={[styles.dropdownItem, etaTime === option && styles.dropdownItemActive]}
-                onPress={() => {
-                  setEtaTime(option);
-                  setShowTimePicker(false);
-                }}
-              >
-                <Text style={styles.dropdownText}>{option}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
-        <Pressable style={styles.primaryButton} onPress={onCompleteEtaInput}>
-          <Text style={styles.primaryButtonText}>입력 완료</Text>
-        </Pressable>
-        {!!item.etaText && <Text style={styles.meta}>저장된 완료 예정: {item.etaText}</Text>}
       </View>
 
       {canShowRepairItems && (
@@ -181,7 +116,7 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
         <Text style={styles.sectionTitle}>견적 전송/확인</Text>
         <TextInput value={estimateAmount} onChangeText={setEstimateAmount} style={styles.input} placeholder="견적 금액" keyboardType="numeric" />
         <TextInput value={estimateNote} onChangeText={setEstimateNote} style={styles.input} placeholder="견적 메모" />
-        <Pressable style={styles.primaryButton} onPress={() => onSendEstimate(false)}>
+        <Pressable style={styles.primaryButton} onPress={onSendEstimate}>
           <Text style={styles.primaryButtonText}>견적 전송</Text>
         </Pressable>
 
@@ -206,19 +141,6 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
           })}
         </View>
         {!!confirmedEstimate && <Text style={styles.meta}>확정 견적: {confirmedEstimate.amount.toLocaleString()}원</Text>}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>소비자 앱 타임라인 반영 데이터</Text>
-        {item.timeline.slice().reverse().map((timelinePoint) => (
-          <View key={`${timelinePoint.status}-${timelinePoint.updatedAt}`} style={styles.timelineRow}>
-            <Text style={styles.itemTitle}>{timelinePoint.statusLabel}</Text>
-            <Text style={styles.itemMeta}>{new Date(timelinePoint.updatedAt).toLocaleString()}</Text>
-            <Text style={styles.itemMeta}>
-              작업 항목: {timelinePoint.completedRepairItems.length ? timelinePoint.completedRepairItems.join(', ') : '완료된 작업 없음'}
-            </Text>
-          </View>
-        ))}
       </View>
     </ScrollView>
   );
@@ -261,25 +183,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  pickerBox: {
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.white,
-  },
-  pickerLabel: { fontSize: 12, color: colors.textSecondary },
-  pickerValue: { marginTop: 2, color: colors.textPrimary, fontWeight: '600' },
-  dropdownList: {
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  dropdownItem: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.white },
-  dropdownItemActive: { backgroundColor: colors.brandSoft },
-  dropdownText: { color: colors.textPrimary },
   itemRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -324,11 +227,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.royalBlueDark,
   },
   confirmButtonText: { color: colors.white, fontWeight: '700', fontSize: 12 },
-  timelineRow: {
-    borderLeftWidth: 2,
-    borderLeftColor: colors.royalBlue,
-    paddingLeft: spacing.sm,
-    marginBottom: spacing.xs,
-    gap: spacing.xxs,
-  },
 });
