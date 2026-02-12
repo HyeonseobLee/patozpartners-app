@@ -20,15 +20,21 @@ export const ReportScreen = () => {
 
   const metrics = useMemo(() => {
     const rangeCases = cases.filter((item) => isInRange(item.intakeAt, range));
-    const finished = rangeCases.filter((item) => item.status === 'ESTIMATE_ACCEPTED');
+    const finished = rangeCases.filter((item) => item.status === 'RECEIVED_COMPLETED');
     const revenue = finished.reduce((sum, item) => {
       const selectedEstimate = item.estimates.find((estimate) => estimate.id === item.selectedEstimateId) ?? item.estimates[0];
       return sum + (selectedEstimate?.amount ?? 0);
     }, 0);
 
     const modelCounter = new Map<string, number>();
+    const repairItemCounter = new Map<string, number>();
+
     rangeCases.forEach((repairCase) => {
       modelCounter.set(repairCase.deviceModel, (modelCounter.get(repairCase.deviceModel) ?? 0) + 1);
+      repairCase.repairItems.forEach((repairItem) => {
+        if (!repairItem.done) return;
+        repairItemCounter.set(repairItem.title, (repairItemCounter.get(repairItem.title) ?? 0) + 1);
+      });
     });
 
     const modelStats = [...modelCounter.entries()]
@@ -36,7 +42,13 @@ export const ReportScreen = () => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
+    const repairItemStats = [...repairItemCounter.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
     const maxModelCount = modelStats[0]?.count ?? 1;
+    const maxRepairItemCount = repairItemStats[0]?.count ?? 1;
 
     return {
       totalFinished: finished.length,
@@ -44,13 +56,13 @@ export const ReportScreen = () => {
       totalReceived: rangeCases.length,
       modelStats,
       maxModelCount,
+      repairItemStats,
+      maxRepairItemCount,
     };
   }, [cases, range]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>수리 리포트</Text>
-
       <View style={styles.segmentWrap}>
         {RANGE_OPTIONS.map((option) => {
           const selected = range === option;
@@ -64,7 +76,7 @@ export const ReportScreen = () => {
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>핵심 지표 ({range})</Text>
-        <Text style={styles.metricLine}>견적 수락 건수: {metrics.totalFinished}건</Text>
+        <Text style={styles.metricLine}>수령 완료 건수: {metrics.totalFinished}건</Text>
         <Text style={styles.metricLine}>매출액: {metrics.revenue.toLocaleString()}원</Text>
         <Text style={styles.metricLine}>전체 입고 건수: {metrics.totalReceived}건</Text>
       </View>
@@ -82,6 +94,20 @@ export const ReportScreen = () => {
           </View>
         ))}
       </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>수리 항목별 통계</Text>
+        {metrics.repairItemStats.length === 0 && <Text style={styles.metricLine}>완료된 수리 항목 데이터가 없습니다.</Text>}
+        {metrics.repairItemStats.map((repairItemInfo) => (
+          <View key={repairItemInfo.label} style={styles.modelRow}>
+            <Text style={styles.modelLabel}>{repairItemInfo.label}</Text>
+            <View style={styles.barTrack}>
+              <View style={[styles.barFill, { width: `${(repairItemInfo.count / metrics.maxRepairItemCount) * 100}%` }]} />
+            </View>
+            <Text style={styles.modelCount}>{repairItemInfo.count}회</Text>
+          </View>
+        ))}
+      </View>
     </ScrollView>
   );
 };
@@ -89,7 +115,6 @@ export const ReportScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
-  title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary },
   segmentWrap: {
     flexDirection: 'row',
     backgroundColor: colors.white,

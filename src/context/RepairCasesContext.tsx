@@ -1,14 +1,19 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
-export const STATUS_FLOW = ['NEW_REQUEST', 'ESTIMATE_PENDING', 'ESTIMATE_ACCEPTED'] as const;
-
+export const STATUS_FLOW = ['NEW_REQUEST', 'ESTIMATE_PENDING', 'ESTIMATE_ACCEPTED', 'INTAKE_COMPLETED', 'IN_REPAIR', 'REPAIR_COMPLETED', 'RECEIVED_COMPLETED'] as const;
 export type RepairStatus = (typeof STATUS_FLOW)[number];
 
 export const STATUS_LABEL: Record<RepairStatus, string> = {
   NEW_REQUEST: '신규 요청',
   ESTIMATE_PENDING: '견적 확인 중',
   ESTIMATE_ACCEPTED: '견적 수락',
+  INTAKE_COMPLETED: '입고 완료',
+  IN_REPAIR: '수리 중',
+  REPAIR_COMPLETED: '수리 완료',
+  RECEIVED_COMPLETED: '수령 완료',
 };
+
+export const MANUAL_STATUS_START_INDEX = STATUS_FLOW.indexOf('INTAKE_COMPLETED');
 
 export type RepairItem = {
   id: string;
@@ -55,12 +60,14 @@ export type RepairCase = {
 type RepairCasesContextType = {
   cases: RepairCase[];
   setStatus: (id: string, status: RepairStatus) => boolean;
-  goToNextStatus: (id: string) => void;
-  goToPrevStatus: (id: string) => void;
+  goToNextStatus: (id: string) => boolean;
+  canManuallyMoveToNextStatus: (repairCase?: RepairCase) => boolean;
+  getNextStatus: (repairCase?: RepairCase) => RepairStatus | null;
   saveCompletionDueAt: (id: string, completionDueAt: string) => void;
   toggleRepairItem: (id: string, itemId: string) => void;
   addRepairItem: (id: string, payload: { title: string; note?: string }) => void;
   sendEstimate: (id: string, amount: number, note: string, options?: { additional?: boolean }) => Promise<void>;
+  acceptEstimate: (id: string, estimateId?: string) => void;
   findCase: (id?: string) => RepairCase | undefined;
 };
 
@@ -195,28 +202,37 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     return updated;
   };
 
-  const goToNextStatus = (id: string) => {
-    setCases((prev) =>
-      updateCase(prev, id, (item) => {
-        const currentIdx = STATUS_FLOW.indexOf(item.status);
-        if (currentIdx < 0 || currentIdx >= STATUS_FLOW.length - 1) {
-          return item;
-        }
-        return withStatusTransition(item, STATUS_FLOW[currentIdx + 1]);
-      }),
-    );
+  const canManuallyMoveToNextStatus = (repairCase?: RepairCase) => {
+    if (!repairCase) return false;
+    const currentIdx = STATUS_FLOW.indexOf(repairCase.status);
+    return currentIdx >= MANUAL_STATUS_START_INDEX && currentIdx < STATUS_FLOW.length - 1;
   };
 
-  const goToPrevStatus = (id: string) => {
+  const getNextStatus = (repairCase?: RepairCase): RepairStatus | null => {
+    if (!repairCase) return null;
+    const currentIdx = STATUS_FLOW.indexOf(repairCase.status);
+    if (currentIdx < 0 || currentIdx >= STATUS_FLOW.length - 1) {
+      return null;
+    }
+    return STATUS_FLOW[currentIdx + 1];
+  };
+
+  const goToNextStatus = (id: string) => {
+    let moved = false;
     setCases((prev) =>
       updateCase(prev, id, (item) => {
-        const currentIdx = STATUS_FLOW.indexOf(item.status);
-        if (currentIdx <= 0) {
+        if (!canManuallyMoveToNextStatus(item)) {
           return item;
         }
-        return withStatusTransition(item, STATUS_FLOW[currentIdx - 1]);
+        const nextStatus = getNextStatus(item);
+        if (!nextStatus) {
+          return item;
+        }
+        moved = true;
+        return withStatusTransition(item, nextStatus);
       }),
     );
+    return moved;
   };
 
   const saveCompletionDueAt = (id: string, completionDueAt: string) => {
@@ -254,7 +270,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
         ...item,
-        repairItems: [{ id: `ITEM-${Date.now()}`, title, note: payload.note?.trim(), done: false }, ...item.repairItems],
+        repairItems: [...item.repairItems, { id: `ITEM-${Date.now()}`, title, note: payload.note?.trim(), done: false }],
       })),
     );
   };
@@ -265,7 +281,7 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
 
     setCases((prev) =>
       updateCase(prev, id, (item) => ({
-        ...item,
+        ...withStatusTransition(item, 'ESTIMATE_PENDING'),
         selectedEstimateId: estimateId,
         estimates: [
           {
@@ -281,6 +297,15 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
     );
   };
 
+  const acceptEstimate = (id: string, estimateId?: string) => {
+    setCases((prev) =>
+      updateCase(prev, id, (item) => ({
+        ...withStatusTransition(item, 'ESTIMATE_ACCEPTED'),
+        selectedEstimateId: estimateId ?? item.selectedEstimateId ?? item.estimates[0]?.id,
+      })),
+    );
+  };
+
   const findCase = (id?: string) => cases.find((item) => item.id === id);
 
   const value = useMemo(
@@ -288,11 +313,13 @@ export const RepairCasesProvider = ({ children }: { children: React.ReactNode })
       cases,
       setStatus,
       goToNextStatus,
-      goToPrevStatus,
+      canManuallyMoveToNextStatus,
+      getNextStatus,
       saveCompletionDueAt,
       toggleRepairItem,
       addRepairItem,
       sendEstimate,
+      acceptEstimate,
       findCase,
     }),
     [cases],

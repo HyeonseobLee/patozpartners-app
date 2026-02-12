@@ -8,6 +8,9 @@ const getTone = (status: RepairStatus) => {
     return { bg: '#FFFBEB', text: '#B45309' };
   }
   if (status === 'ESTIMATE_ACCEPTED') {
+    return { bg: '#DBEAFE', text: '#1D4ED8' };
+  }
+  if (status === 'RECEIVED_COMPLETED') {
     return { bg: '#ECFDF5', text: colors.success };
   }
   return { bg: colors.brandSoft, text: colors.brand };
