@@ -1,6 +1,7 @@
 import type { RepairItem } from '../context/RepairCasesContext';
 
 export type PartnerEstimatePayload = {
+  estimateId: string;
   caseId: string;
   intakeNumber: string;
   customerName?: string;
@@ -19,7 +20,7 @@ export const ConsumerEstimateInboxApi = {
     mockConsumerEstimateInbox.unshift(payload);
     return {
       ok: true,
-      estimateId: `EST-${Date.now()}`,
+      estimateId: payload.estimateId,
     };
   },
   async getInbox(): Promise<PartnerEstimatePayload[]> {

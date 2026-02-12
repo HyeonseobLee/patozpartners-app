@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
@@ -11,7 +11,7 @@ type Props = NativeStackScreenProps<RepairStackParamList, 'RepairManageDetail'>;
 
 export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const { caseId } = route.params;
-  const { findCase, addRepairItem, saveEta, toggleRepairItem, setStatus, sendEstimate } = useRepairCases();
+  const { findCase, addRepairItem, saveEta, toggleRepairItem, setStatus, sendEstimate, confirmEstimateByConsumer } = useRepairCases();
   const item = findCase(caseId);
 
   const [title, setTitle] = useState('');
@@ -19,8 +19,13 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const [expectedHours, setExpectedHours] = useState('');
   const [actualHours, setActualHours] = useState('');
   const [etaText, setEtaText] = useState(item?.etaText ?? '');
-  const [estimateAmount, setEstimateAmount] = useState(String(item?.estimate?.amount ?? ''));
-  const [estimateNote, setEstimateNote] = useState(item?.estimate?.note ?? '');
+  const [estimateAmount, setEstimateAmount] = useState('');
+  const [estimateNote, setEstimateNote] = useState('');
+
+  const confirmedEstimate = useMemo(
+    () => item?.estimates.find((estimate) => estimate.consumerConfirmed),
+    [item?.estimates],
+  );
 
   if (!item) {
     return (
@@ -47,17 +52,24 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
 
   const onSaveEta = () => {
     saveEta(item.id, etaText);
-    Alert.alert('저장 완료', '완료 예정 시간이 고객 앱에 반영됩니다.');
+    Alert.alert('저장 완료', '완료 예정 시간이 소비자 앱 타임라인에 반영됩니다.');
   };
 
   const onSendEstimate = async (additional = false) => {
     const amount = Number(estimateAmount);
     if (!amount) return;
     await sendEstimate(item.id, amount, estimateNote, { additional });
-    Alert.alert('견적 전송', additional ? '추가 견적이 고객에게 전달되었습니다' : '견적이 고객에게 전달되었습니다');
+    setEstimateAmount('');
+    setEstimateNote('');
+    Alert.alert('견적 전송', additional ? '추가 견적이 고객에게 전달되었습니다.' : '견적이 고객에게 전달되었습니다.');
   };
 
-  const onSelectStatus = (status: RepairStatus) => setStatus(item.id, status);
+  const onSelectStatus = (status: RepairStatus) => {
+    const updated = setStatus(item.id, status);
+    if (!updated && status === 'PARTS_PENDING') {
+      Alert.alert('견적 확정 필요', '소비자가 견적 리스트 중 하나를 확정해야 부품 준비 단계로 이동할 수 있습니다.');
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -70,7 +82,7 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>수리 상태 변경 (REGISTERED ~ FINISHED)</Text>
+        <Text style={styles.sectionTitle}>수리 상태 변경 (5단계 동기화)</Text>
         <View style={styles.statusWrap}>
           {STATUS_FLOW.map((status) => {
             const selected = status === item.status;
@@ -84,7 +96,7 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>작업 내용 및 완료 예정 시간</Text>
+        <Text style={styles.sectionTitle}>수리 항목 및 완료 예정 시간</Text>
         <TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="항목명 (예: 타이어 교체)" />
         <TextInput value={note} onChangeText={setNote} style={styles.input} placeholder="작업 상세 메모" />
         <View style={styles.row}>
@@ -119,6 +131,7 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
             <View style={{ flex: 1 }}>
               <Text style={styles.itemTitle}>{repairItem.title}</Text>
               {!!repairItem.note && <Text style={styles.itemMeta}>{repairItem.note}</Text>}
+              {!!repairItem.completedAt && <Text style={styles.itemMeta}>완료 시각: {new Date(repairItem.completedAt).toLocaleString()}</Text>}
             </View>
             <Text style={styles.itemMeta}>{repairItem.done ? '완료' : '진행중'}</Text>
           </Pressable>
@@ -127,7 +140,7 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
 
       {(item.status === 'INSPECTING' || item.status === 'PARTS_PENDING') && (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{item.status === 'INSPECTING' ? '견적서 보내기' : '추가 견적 보내기'}</Text>
+          <Text style={styles.sectionTitle}>견적서 선발송</Text>
           <TextInput
             value={estimateAmount}
             onChangeText={setEstimateAmount}
@@ -145,8 +158,43 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
           <Pressable style={styles.primaryButton} onPress={() => onSendEstimate(item.status === 'PARTS_PENDING')}>
             <Text style={styles.primaryButtonText}>{item.status === 'INSPECTING' ? '고객에게 견적 보내기' : '고객에게 추가 견적 보내기'}</Text>
           </Pressable>
+
+          <View style={styles.quoteListWrap}>
+            <Text style={styles.quoteTitle}>전송된 견적 리스트</Text>
+            {item.estimates.length === 0 && <Text style={styles.meta}>전송된 견적이 없습니다.</Text>}
+            {item.estimates.map((estimate) => {
+              const selected = estimate.consumerConfirmed;
+              return (
+                <View key={estimate.id} style={[styles.quoteCard, selected && styles.quoteCardSelected]}>
+                  <Text style={styles.itemTitle}>{estimate.amount.toLocaleString()}원</Text>
+                  <Text style={styles.itemMeta}>{estimate.note}</Text>
+                  <Text style={styles.itemMeta}>전송 시각: {new Date(estimate.sentAt).toLocaleString()}</Text>
+                  <Text style={styles.itemMeta}>{selected ? `소비자 확정: ${new Date(estimate.consumerConfirmedAt ?? '').toLocaleString()}` : '소비자 미확정'}</Text>
+                  {!selected && (
+                    <Pressable style={styles.confirmButton} onPress={() => confirmEstimateByConsumer(item.id, estimate.id)}>
+                      <Text style={styles.confirmButtonText}>소비자 확정 처리(연동 시뮬레이션)</Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+          {!!confirmedEstimate && <Text style={styles.meta}>확정 견적: {confirmedEstimate.amount.toLocaleString()}원</Text>}
         </View>
       )}
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>소비자 앱 타임라인 반영 데이터</Text>
+        {item.timeline.slice().reverse().map((timelinePoint) => (
+          <View key={`${timelinePoint.status}-${timelinePoint.updatedAt}`} style={styles.timelineRow}>
+            <Text style={styles.itemTitle}>{timelinePoint.statusLabel}</Text>
+            <Text style={styles.itemMeta}>{new Date(timelinePoint.updatedAt).toLocaleString()}</Text>
+            <Text style={styles.itemMeta}>
+              작업 항목: {timelinePoint.completedRepairItems.length ? timelinePoint.completedRepairItems.join(', ') : '완료된 작업 없음'}
+            </Text>
+          </View>
+        ))}
+      </View>
 
       {(item.repairCompletedAt || item.pickupCompletedAt) && (
         <View style={styles.card}>
@@ -231,4 +279,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand,
   },
   primaryButtonText: { color: colors.white, fontWeight: '700' },
+  quoteListWrap: { gap: spacing.xs },
+  quoteTitle: { color: colors.textPrimary, fontWeight: '700' },
+  quoteCard: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: spacing.sm,
+    gap: spacing.xxs,
+  },
+  quoteCardSelected: { borderColor: colors.royalBlue, backgroundColor: colors.royalBlueSoft },
+  confirmButton: {
+    marginTop: spacing.xs,
+    borderRadius: radius.md,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    backgroundColor: colors.royalBlueDark,
+  },
+  confirmButtonText: { color: colors.white, fontWeight: '700', fontSize: 12 },
+  timelineRow: {
+    borderLeftWidth: 2,
+    borderLeftColor: colors.royalBlue,
+    paddingLeft: spacing.sm,
+    marginBottom: spacing.xs,
+    gap: spacing.xxs,
+  },
 });

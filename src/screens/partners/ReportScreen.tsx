@@ -6,32 +6,44 @@ import { colors, radius, spacing } from '../../styles/theme';
 type RangeType = '일간' | '주간' | '월간';
 const RANGE_OPTIONS: RangeType[] = ['일간', '주간', '월간'];
 
+const isInRange = (targetIso: string, range: RangeType) => {
+  const target = new Date(targetIso).getTime();
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const rangeMs = range === '일간' ? dayMs : range === '주간' ? dayMs * 7 : dayMs * 30;
+  return now - target <= rangeMs;
+};
+
 export const ReportScreen = () => {
   const { cases } = useRepairCases();
   const [range, setRange] = useState<RangeType>('일간');
 
   const metrics = useMemo(() => {
-    const finished = cases.filter((item) => item.status === 'FINISHED');
-    const revenue = finished.reduce((sum, item) => sum + (item.estimate?.amount ?? 0), 0);
+    const rangeCases = cases.filter((item) => isInRange(item.intakeAt, range));
+    const finished = rangeCases.filter((item) => item.status === 'FINISHED');
+    const revenue = finished.reduce((sum, item) => {
+      const confirmedEstimate = item.estimates.find((estimate) => estimate.consumerConfirmed);
+      return sum + (confirmedEstimate?.amount ?? 0);
+    }, 0);
 
-    const itemCounter = new Map<string, number>();
-    cases.forEach((repairCase) => {
-      repairCase.repairItems.forEach((repairItem) => {
-        itemCounter.set(repairItem.title, (itemCounter.get(repairItem.title) ?? 0) + 1);
-      });
+    const modelCounter = new Map<string, number>();
+    rangeCases.forEach((repairCase) => {
+      modelCounter.set(repairCase.deviceModel, (modelCounter.get(repairCase.deviceModel) ?? 0) + 1);
     });
 
-    const topItem = [...itemCounter.entries()].sort((a, b) => b[1] - a[1])[0];
-    const ratedCases = cases.filter((item) => item.rating);
-    const avgRating = ratedCases.length
-      ? (ratedCases.reduce((sum, item) => sum + (item.rating ?? 0), 0) / ratedCases.length).toFixed(1)
-      : '0.0';
+    const modelStats = [...modelCounter.entries()]
+      .map(([model, count]) => ({ model, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const maxModelCount = modelStats[0]?.count ?? 1;
 
     return {
       totalFinished: finished.length,
       revenue,
-      topItem: topItem ? `${topItem[0]} (${topItem[1]}건)` : '데이터 없음',
-      avgRating,
+      totalReceived: rangeCases.length,
+      modelStats,
+      maxModelCount,
     };
   }, [cases, range]);
 
@@ -52,23 +64,23 @@ export const ReportScreen = () => {
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>핵심 지표 ({range})</Text>
-        <Text style={styles.metricLine}>총 수리 완료 건수: {metrics.totalFinished}건</Text>
-        <Text style={styles.metricLine}>누적 매출액: {metrics.revenue.toLocaleString()}원</Text>
-        <Text style={styles.metricLine}>가장 많이 수리된 항목: {metrics.topItem}</Text>
-        <Text style={styles.metricLine}>고객 만족도(별점): {metrics.avgRating} / 5.0</Text>
+        <Text style={styles.metricLine}>수리 완료 건수: {metrics.totalFinished}건</Text>
+        <Text style={styles.metricLine}>매출액: {metrics.revenue.toLocaleString()}원</Text>
+        <Text style={styles.metricLine}>전체 입고 건수: {metrics.totalReceived}건</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>최근 완료 건</Text>
-        {cases
-          .filter((item) => item.status === 'FINISHED')
-          .slice(0, 4)
-          .map((item) => (
-            <View key={item.id} style={styles.issueCard}>
-              <Text style={styles.issueTitle}>{item.deviceModel}</Text>
-              <Text style={styles.issueMeta}>{item.customerName ?? '고객 미입력'} · {item.estimate?.amount?.toLocaleString() ?? 0}원</Text>
+        <Text style={styles.sectionTitle}>모델별 입고 통계</Text>
+        {metrics.modelStats.length === 0 && <Text style={styles.metricLine}>선택한 기간에 데이터가 없습니다.</Text>}
+        {metrics.modelStats.map((modelInfo) => (
+          <View key={modelInfo.model} style={styles.modelRow}>
+            <Text style={styles.modelLabel}>{modelInfo.model}</Text>
+            <View style={styles.barTrack}>
+              <View style={[styles.barFill, { width: `${(modelInfo.count / metrics.maxModelCount) * 100}%` }]} />
             </View>
-          ))}
+            <Text style={styles.modelCount}>{modelInfo.count}건</Text>
+          </View>
+        ))}
       </View>
     </ScrollView>
   );
@@ -100,13 +112,18 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 16, color: colors.textPrimary, fontWeight: '700' },
   metricLine: { color: colors.textSecondary, fontSize: 14 },
-  issueCard: {
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    backgroundColor: '#FBFDFF',
+  modelRow: { gap: spacing.xs },
+  modelLabel: { color: colors.textPrimary, fontWeight: '700' },
+  barTrack: {
+    height: 10,
+    borderRadius: radius.full,
+    backgroundColor: colors.royalBlueSoft,
+    overflow: 'hidden',
   },
-  issueTitle: { color: colors.textPrimary, fontWeight: '700' },
-  issueMeta: { color: colors.textSecondary, fontSize: 12 },
+  barFill: {
+    height: '100%',
+    borderRadius: radius.full,
+    backgroundColor: colors.royalBlue,
+  },
+  modelCount: { color: colors.textSecondary, fontSize: 12 },
 });
