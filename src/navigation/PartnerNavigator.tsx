@@ -35,8 +35,8 @@ const ReportStackScreen = () => (
   </ReportStack.Navigator>
 );
 
-const getTabIcon = (icon: string, color: string) => (
-  <Text style={{ fontSize: 28, lineHeight: 30, color, fontWeight: '800', textAlign: 'center', includeFontPadding: false }} accessibilityElementsHidden>
+const getTabIcon = (icon: string, color: string, size: number, weight: '700' | '800' | '900' = '800') => (
+  <Text style={{ fontSize: size, lineHeight: size + 2, color, fontWeight: weight, textAlign: 'center', includeFontPadding: false }} accessibilityElementsHidden>
     {icon}
   </Text>
 );
@@ -54,9 +54,9 @@ const PartnerNavigator = () => {
           tabBarIconStyle: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
         }}
       >
-        <Tab.Screen name="NewRequest" component={NewRequestStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('⌂', color) }} />
-        <Tab.Screen name="RepairManage" component={RepairStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('☰', color) }} />
-        <Tab.Screen name="RepairReport" component={ReportStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('◔', color) }} />
+        <Tab.Screen name="NewRequest" component={NewRequestStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('⌂', color, 30, '800') }} />
+        <Tab.Screen name="RepairManage" component={RepairStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('☰', color, 30, '800') }} />
+        <Tab.Screen name="RepairReport" component={ReportStackScreen} options={{ tabBarIcon: ({ color }) => getTabIcon('◉', color, 30, '900') }} />
       </Tab.Navigator>
     </RepairCasesProvider>
   );

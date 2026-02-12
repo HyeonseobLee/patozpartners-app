@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, G } from 'react-native-svg';
 import { STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { colors, radius, spacing } from '../../styles/theme';
 
@@ -14,7 +15,80 @@ const isInRange = (targetIso: string, range: RangeType) => {
   return now - target <= rangeMs;
 };
 
-const colorPalette = ['#4169E1', '#5A7DF0', '#7F97F8', '#9BAEFF', '#BED0FF', '#3355C7'];
+const colorPalette = ['#2563EB', '#F97316', '#10B981', '#7C3AED', '#EF4444', '#06B6D4'];
+
+const PART_CATEGORIES = [
+  { label: '타이어', keywords: ['타이어', 'tire'], color: '#2563EB' },
+  { label: '브레이크', keywords: ['브레이크', '제동', 'brake'], color: '#F97316' },
+  { label: '배터리', keywords: ['배터리', 'battery', '전장', '충전'], color: '#10B981' },
+  { label: '모터', keywords: ['모터', 'motor', '구동'], color: '#7C3AED' },
+];
+
+const PieChart = ({
+  data,
+}: {
+  data: Array<{ label: string; value: number; color: string; subtitle: string }>;
+}) => {
+  const radiusSize = 78;
+  const strokeWidth = 42;
+  const circumference = 2 * Math.PI * radiusSize;
+  const total = data.reduce((sum, item) => sum + item.value, 0) || 1;
+  let accumulatedRatio = 0;
+
+  return (
+    <View style={styles.pieBlock}>
+      <Svg width={220} height={220}>
+        <G x={110} y={110}>
+          {data.map((item) => {
+            const ratio = item.value / total;
+            const dash = circumference * ratio;
+            const gap = circumference - dash;
+            const offset = -circumference * accumulatedRatio;
+            accumulatedRatio += ratio;
+
+            return (
+              <Circle
+                key={item.label}
+                cx={0}
+                cy={0}
+                r={radiusSize}
+                stroke={item.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${dash} ${gap}`}
+                strokeDashoffset={offset}
+                fill="transparent"
+                rotation={-90}
+              />
+            );
+          })}
+        </G>
+      </Svg>
+
+      <View style={styles.percentOverlay} pointerEvents="none">
+        {data.map((item, idx) => {
+          const ratio = item.value / total;
+          const percent = Math.max(1, Math.round(ratio * 100));
+          return (
+            <Text key={`${item.label}-${idx}`} style={[styles.percentText, { color: item.color }]}>
+              {item.label} {percent}%
+            </Text>
+          );
+        })}
+      </View>
+
+      <View style={styles.legendWrap}>
+        {data.map((item) => (
+          <View key={item.label} style={styles.legendRow}>
+            <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+            <Text style={styles.metricLine}>
+              {item.label}: {item.subtitle}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
 
 export const ReportScreen = () => {
   const { cases } = useRepairCases();
@@ -29,32 +103,41 @@ export const ReportScreen = () => {
       return sum + (selectedEstimate?.amount ?? 0);
     }, 0);
 
-    const repairItemCounter = new Map<string, number>();
-    rangeCases.forEach((repairCase) => {
+    const partStats = PART_CATEGORIES.map((part) => ({ ...part, count: 0, revenue: 0 }));
+    finished.forEach((repairCase) => {
+      const selectedEstimate = repairCase.estimates.find((estimate) => estimate.id === repairCase.selectedEstimateId) ?? repairCase.estimates[0];
+      const amount = selectedEstimate?.amount ?? 0;
+      const matchedCategories = new Set<number>();
+
       repairCase.repairItems.forEach((repairItem) => {
         if (!repairItem.done) return;
-        repairItemCounter.set(repairItem.title, (repairItemCounter.get(repairItem.title) ?? 0) + 1);
+        const lowered = repairItem.title.toLowerCase();
+        const categoryIndex = PART_CATEGORIES.findIndex((part) => part.keywords.some((keyword) => lowered.includes(keyword.toLowerCase())));
+        if (categoryIndex >= 0) {
+          matchedCategories.add(categoryIndex);
+          partStats[categoryIndex].count += 1;
+        }
+      });
+
+      const distributionTargets = matchedCategories.size > 0 ? [...matchedCategories] : [0, 1, 2, 3];
+      const splitAmount = amount / distributionTargets.length;
+      distributionTargets.forEach((index) => {
+        partStats[index].revenue += splitAmount;
       });
     });
 
-    const repairItemStats = [...repairItemCounter.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 5);
-    const totalRepairs = repairItemStats.reduce((sum, item) => sum + item.count, 0) || 1;
+    const totalPartRepairs = partStats.reduce((sum, item) => sum + item.count, 0);
+    const normalizedPartStats = partStats.map((item) => ({ ...item, count: totalPartRepairs === 0 ? 1 : item.count || 1 }));
 
-    const trendLength = range === '월간' ? 4 : range === '주간' ? 7 : 6;
-    const trendData = Array.from({ length: trendLength }, (_, idx) => {
-      const bucketCases = rangeCases.filter((repairCase) => {
-        const dayGap = Math.floor((Date.now() - new Date(repairCase.intakeAt).getTime()) / (24 * 60 * 60 * 1000));
-        return dayGap >= idx && dayGap < idx + 1;
-      });
-      const completedCount = bucketCases.filter((repairCase) => repairCase.status === 'REPAIR_COMPLETED' || repairCase.status === 'SHIPMENT_COMPLETED').length;
-      const expectedRevenue = bucketCases.reduce((sum, repairCase) => {
-        const selectedEstimate = repairCase.estimates.find((estimate) => estimate.id === repairCase.selectedEstimateId) ?? repairCase.estimates[0];
-        return sum + (selectedEstimate?.amount ?? 0);
-      }, 0);
-      return { label: `${trendLength - idx}`, completedCount, expectedRevenue };
-    }).reverse();
-
-    const maxCompleted = Math.max(...trendData.map((item) => item.completedCount), 1);
+    const productCounter = new Map<string, number>();
+    rangeCases.forEach((repairCase) => {
+      productCounter.set(repairCase.deviceModel, (productCounter.get(repairCase.deviceModel) ?? 0) + 1);
+    });
+    const productStats = [...productCounter.entries()]
+      .map(([label, count], idx) => ({ label, count, color: colorPalette[idx % colorPalette.length] }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    const totalProducts = productStats.reduce((sum, item) => sum + item.count, 0) || 1;
 
     const stageDurationMap = new Map<string, { totalMs: number; count: number }>();
     rangeCases.forEach((repairCase) => {
@@ -80,10 +163,9 @@ export const ReportScreen = () => {
       totalFinished: finished.length,
       revenue,
       totalReceived: rangeCases.length,
-      repairItemStats,
-      totalRepairs,
-      trendData,
-      maxCompleted,
+      partStats: normalizedPartStats,
+      productStats,
+      totalProducts,
       stageDurations,
       maxStageHour,
     };
@@ -110,46 +192,27 @@ export const ReportScreen = () => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>항목별 수리 비중 (Pie Chart)</Text>
-        <View style={styles.pieWrap}>
-          <View style={styles.pieCircle}>
-            {metrics.repairItemStats.map((item, idx) => {
-              const ratio = item.count / metrics.totalRepairs;
-              return (
-                <View key={item.label} style={[styles.pieSlice, { width: `${Math.max(ratio * 100, 8)}%`, backgroundColor: colorPalette[idx % colorPalette.length] }]} />
-              );
-            })}
-          </View>
-        </View>
-        {metrics.repairItemStats.map((item, idx) => (
-          <View key={item.label} style={styles.legendRow}>
-            <View style={[styles.legendDot, { backgroundColor: colorPalette[idx % colorPalette.length] }]} />
-            <Text style={styles.metricLine}>
-              {item.label}: {Math.round((item.count / metrics.totalRepairs) * 100)}%
-            </Text>
-          </View>
-        ))}
+        <Text style={styles.sectionTitle}>항목별 수리 비중</Text>
+        <PieChart
+          data={metrics.partStats.map((item) => ({
+            label: item.label,
+            value: item.count,
+            color: item.color,
+            subtitle: `₩${Math.round(item.revenue).toLocaleString()}`,
+          }))}
+        />
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>매출/완료 추이 (Line Chart)</Text>
-        <View style={styles.lineArea}>
-          {metrics.trendData.map((point, idx) => {
-            const left = `${(idx / Math.max(metrics.trendData.length - 1, 1)) * 100}%`;
-            const top = 100 - (point.completedCount / metrics.maxCompleted) * 100;
-            return (
-              <View key={point.label} style={[styles.linePointWrap, { left }]}>
-                <View style={[styles.linePoint, { top: `${Math.max(top, 6)}%` }]} />
-                <Text style={styles.lineLabel}>{point.label}</Text>
-              </View>
-            );
-          })}
-        </View>
-        {metrics.trendData.map((point) => (
-          <Text key={point.label} style={styles.metricLine}>
-            구간 {point.label}: 완료 {point.completedCount}건 / 예상 수익 {point.expectedRevenue.toLocaleString()}원
-          </Text>
-        ))}
+        <Text style={styles.sectionTitle}>제품별 비중</Text>
+        <PieChart
+          data={metrics.productStats.map((item) => ({
+            label: item.label,
+            value: item.count,
+            color: item.color,
+            subtitle: `${Math.round((item.count / metrics.totalProducts) * 100)}%`,
+          }))}
+        />
       </View>
 
       <View style={styles.card}>
@@ -182,15 +245,12 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.white, borderColor: colors.borderSoft, borderWidth: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm },
   sectionTitle: { fontSize: 16, color: colors.textPrimary, fontWeight: '700' },
   metricLine: { color: colors.textSecondary, fontSize: 13 },
-  pieWrap: { alignItems: 'center', paddingVertical: spacing.sm },
-  pieCircle: { width: 170, height: 170, borderRadius: radius.full, overflow: 'hidden', borderWidth: 5, borderColor: colors.royalBlueSoft, flexDirection: 'row', backgroundColor: '#E9EEFF' },
-  pieSlice: { height: '100%' },
+  pieBlock: { alignItems: 'center', gap: spacing.sm },
+  percentOverlay: { position: 'absolute', top: 58, alignItems: 'center', gap: 2 },
+  percentText: { fontSize: 12, fontWeight: '800', textShadowColor: '#FFFFFF', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  legendWrap: { width: '100%', gap: spacing.xxs },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   legendDot: { width: 10, height: 10, borderRadius: radius.full },
-  lineArea: { height: 120, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, backgroundColor: '#F8FAFF', justifyContent: 'flex-end', paddingBottom: spacing.md, position: 'relative' },
-  linePointWrap: { position: 'absolute', bottom: 0, marginLeft: -7, alignItems: 'center' },
-  linePoint: { width: 12, height: 12, borderRadius: radius.full, backgroundColor: colors.royalBlue, borderWidth: 2, borderColor: '#AFC2FF', position: 'absolute' },
-  lineLabel: { marginTop: 84, fontSize: 11, color: colors.textSecondary },
   durationRow: { gap: spacing.xs },
   durationHead: { flexDirection: 'row', justifyContent: 'space-between' },
   durationLabel: { color: colors.textPrimary, fontWeight: '700', fontSize: 13 },
