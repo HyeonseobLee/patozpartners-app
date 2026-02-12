@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { MANUAL_STATUS_START_INDEX, STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
+import { STATUS_FLOW, STATUS_LABEL, useRepairCases } from '../../context/RepairCasesContext';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
 import { colors, radius, spacing } from '../../styles/theme';
 import { StatusStepBar } from '../../components/partners/StatusStepBar';
@@ -47,11 +47,14 @@ export const RepairDetailScreen = ({ route }: Props) => {
   }
 
   const statusIdx = STATUS_FLOW.indexOf(item.status);
+  const intakeCompletedIndex = STATUS_FLOW.indexOf('INTAKE_COMPLETED');
+  const repairCompletedIndex = STATUS_FLOW.indexOf('REPAIR_COMPLETED');
   const nextStatus = getNextStatus(item);
   const canManuallyMove = canManuallyMoveToNextStatus(item);
-  const canShowDueDate = statusIdx >= MANUAL_STATUS_START_INDEX;
-  const canShowRepairItems = statusIdx >= MANUAL_STATUS_START_INDEX;
+  const canShowDueDate = statusIdx >= intakeCompletedIndex && statusIdx < repairCompletedIndex;
+  const canShowRepairItems = statusIdx >= intakeCompletedIndex;
   const canShowEstimateComposer = statusIdx < STATUS_FLOW.indexOf('ESTIMATE_ACCEPTED');
+  const isRepairCompletedOrLater = statusIdx >= repairCompletedIndex;
 
   const serialHistory = useMemo(() => {
     const sameSerialHistory = cases
@@ -67,7 +70,15 @@ export const RepairDetailScreen = ({ route }: Props) => {
     if (!nextStatus) return;
     Alert.alert('상태 변경', `상태를 ${STATUS_LABEL[nextStatus]}로 변경하시겠습니까?`, [
       { text: '취소', style: 'cancel' },
-      { text: '변경', onPress: () => goToNextStatus(item.id) },
+      {
+        text: '변경',
+        onPress: () => {
+          const moved = goToNextStatus(item.id);
+          if (!moved && nextStatus === 'REPAIR_COMPLETED') {
+            Alert.alert('상태 변경 불가', '모든 수리 항목이 완료되어야 수리 완료 상태로 넘어갈 수 있습니다');
+          }
+        },
+      },
     ]);
   };
 
@@ -202,7 +213,12 @@ export const RepairDetailScreen = ({ route }: Props) => {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>수리 항목</Text>
           {item.repairItems.map((repairItem) => (
-            <Pressable key={repairItem.id} style={[styles.itemRow, repairItem.done && styles.itemRowDone]} onPress={() => toggleRepairItem(item.id, repairItem.id)}>
+            <Pressable
+              key={repairItem.id}
+              disabled={isRepairCompletedOrLater}
+              style={[styles.itemRow, repairItem.done && styles.itemRowDone, isRepairCompletedOrLater && styles.disabledRow]}
+              onPress={() => toggleRepairItem(item.id, repairItem.id)}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemTitle, repairItem.done && styles.itemTitleDone]}>{repairItem.title}</Text>
                 {!!repairItem.note && <Text style={[styles.itemMeta, repairItem.done && styles.itemMetaDone]}>{repairItem.note}</Text>}
@@ -212,18 +228,33 @@ export const RepairDetailScreen = ({ route }: Props) => {
             </Pressable>
           ))}
 
-          <TextInput value={newItemTitle} onChangeText={setNewItemTitle} style={styles.input} placeholder="수리 항목 이름" />
-          <TextInput value={newItemNote} onChangeText={setNewItemNote} style={styles.input} placeholder="메모 (선택)" />
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => {
-              addRepairItem(item.id, { title: newItemTitle, note: newItemNote });
-              setNewItemTitle('');
-              setNewItemNote('');
-            }}
-          >
-            <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
-          </Pressable>
+          <View style={[styles.addItemWrap, isRepairCompletedOrLater && styles.addItemWrapDisabled]}>
+            <TextInput
+              value={newItemTitle}
+              onChangeText={setNewItemTitle}
+              style={[styles.input, isRepairCompletedOrLater && styles.disabledInput]}
+              placeholder="수리 항목 이름"
+              editable={!isRepairCompletedOrLater}
+            />
+            <TextInput
+              value={newItemNote}
+              onChangeText={setNewItemNote}
+              style={[styles.input, isRepairCompletedOrLater && styles.disabledInput]}
+              placeholder="메모 (선택)"
+              editable={!isRepairCompletedOrLater}
+            />
+            <Pressable
+              disabled={isRepairCompletedOrLater}
+              style={[styles.secondaryButton, isRepairCompletedOrLater && styles.disabledButton]}
+              onPress={() => {
+                addRepairItem(item.id, { title: newItemTitle, note: newItemNote });
+                setNewItemTitle('');
+                setNewItemNote('');
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>수리 항목 추가</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 
@@ -276,6 +307,7 @@ const styles = StyleSheet.create({
   pickerOptionText: { color: colors.textPrimary },
   input: { borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, backgroundColor: colors.white, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 46 },
   itemRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: spacing.sm, backgroundColor: colors.white },
+  disabledRow: { opacity: 0.55 },
   itemRowDone: { borderColor: '#16A34A', backgroundColor: '#ECFDF5' },
   itemTitle: { fontSize: 14, color: colors.textPrimary, fontWeight: '700' },
   itemTitleDone: { color: '#166534' },
@@ -285,6 +317,22 @@ const styles = StyleSheet.create({
   itemStateTextDone: { color: '#15803D' },
   primaryButton: { borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.brand, minHeight: 44, justifyContent: 'center' },
   secondaryButton: { borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.royalBlueSoft, minHeight: 44, justifyContent: 'center' },
+  disabledButton: { opacity: 0.55 },
+  disabledInput: { backgroundColor: '#F3F4F6', color: colors.textSecondary },
+  addItemWrap: {
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    backgroundColor: '#EFF6FF',
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  addItemWrapDisabled: {
+    borderColor: colors.borderSoft,
+    backgroundColor: '#F8FAFC',
+  },
   secondaryButtonText: { color: colors.royalBlue, fontWeight: '700' },
   primaryButtonText: { color: colors.white, fontWeight: '700' },
   quoteCard: { borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSoft, padding: spacing.sm, gap: spacing.xxs },
