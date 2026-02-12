@@ -4,7 +4,7 @@ import { RepairStatus, STATUS_LABEL } from '../../context/RepairCasesContext';
 import { colors, radius, spacing } from '../../styles/theme';
 
 const getTone = (status: RepairStatus) => {
-  if (status === 'FINISHED') {
+  if (status === 'REPAIR_COMPLETED' || status === 'PICKUP_COMPLETED') {
     return { bg: '#ECFDF5', text: colors.success };
   }
   return { bg: colors.brandSoft, text: colors.brand };
