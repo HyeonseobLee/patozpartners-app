@@ -49,7 +49,6 @@ const NewRequestScreen = () => {
               <View style={styles.cardContent}>
                 <Text style={styles.deviceTitle}>{item.deviceModel}</Text>
                 <Text style={styles.meta}>시리얼 넘버: {item.serialNumber}</Text>
-                <Text style={styles.meta}>AI 진단: {item.aiDiagnosis ?? '진단 데이터 수집 중'}</Text>
               </View>
             </View>
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RepairStackParamList } from '../../navigation/partnersTypes';
@@ -11,7 +11,7 @@ type Props = NativeStackScreenProps<RepairStackParamList, 'RepairManageDetail'>;
 
 export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const { caseId } = route.params;
-  const { findCase, saveEta, toggleRepairItem, setStatus, sendEstimate, confirmEstimateByConsumer } = useRepairCases();
+  const { findCase, saveEta, toggleRepairItem, setStatus, sendEstimate } = useRepairCases();
   const item = findCase(caseId);
 
   const [estimateAmount, setEstimateAmount] = useState('');
@@ -19,7 +19,6 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
   const [expectedTimeText, setExpectedTimeText] = useState(item?.expectedTimeText ?? '');
   const [actualTimeText, setActualTimeText] = useState(item?.actualTimeText ?? '');
 
-  const confirmedEstimate = useMemo(() => item?.estimates.find((estimate) => estimate.consumerConfirmed), [item?.estimates]);
 
   if (!item) {
     return (
@@ -124,23 +123,17 @@ export const RepairStatusUpdateScreen = ({ route }: Props) => {
           <Text style={styles.quoteTitle}>전송된 견적 리스트</Text>
           {item.estimates.length === 0 && <Text style={styles.meta}>전송된 견적이 없습니다.</Text>}
           {item.estimates.map((estimate) => {
-            const selected = estimate.consumerConfirmed;
+            const selected = estimate.id === item.selectedEstimateId;
             return (
               <View key={estimate.id} style={[styles.quoteCard, selected && styles.quoteCardSelected]}>
                 <Text style={styles.itemTitle}>{estimate.amount.toLocaleString()}원</Text>
                 <Text style={styles.itemMeta}>{estimate.note}</Text>
                 <Text style={styles.itemMeta}>전송 시각: {new Date(estimate.sentAt).toLocaleString()}</Text>
-                <Text style={styles.itemMeta}>{selected ? `소비자 확정: ${new Date(estimate.consumerConfirmedAt ?? '').toLocaleString()}` : '소비자 미확정'}</Text>
-                {!selected && (
-                  <Pressable style={styles.confirmButton} onPress={() => confirmEstimateByConsumer(item.id, estimate.id)}>
-                    <Text style={styles.confirmButtonText}>소비자 확정 처리(연동 시뮬레이션)</Text>
-                  </Pressable>
-                )}
+                <Text style={styles.itemMeta}>{selected ? '선택된 견적' : '일반 견적'}</Text>
               </View>
             );
           })}
         </View>
-        {!!confirmedEstimate && <Text style={styles.meta}>확정 견적: {confirmedEstimate.amount.toLocaleString()}원</Text>}
       </View>
     </ScrollView>
   );
@@ -219,12 +212,4 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
   },
   quoteCardSelected: { borderColor: colors.royalBlue, backgroundColor: colors.royalBlueSoft },
-  confirmButton: {
-    marginTop: spacing.xs,
-    borderRadius: radius.md,
-    paddingVertical: spacing.xs,
-    alignItems: 'center',
-    backgroundColor: colors.royalBlueDark,
-  },
-  confirmButtonText: { color: colors.white, fontWeight: '700', fontSize: 12 },
 });
